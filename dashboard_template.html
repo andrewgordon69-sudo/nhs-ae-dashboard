@@ -1,0 +1,749 @@
+<title>England A&amp;E Waits</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="How quickly A&amp;E departments in England saw patients, April to September 2026, by region, ICB and trust. Built from NHS England's published monthly statistics.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single scanning column. Filters, then four headline tiles, then the trend and the
+   regional comparison side by side, then the trust table, then notes. Teal marks anything you can operate. */
+:root {
+  --bg: #f3f6f6;
+  --surface: #ffffff;
+  --ink: #10201f;
+  --ink-2: #485857;
+  --muted: #6f7f7d;
+  --grid: #e3e9e8;
+  --axis: #c3cecc;
+  --line: rgba(16, 32, 31, 0.10);
+  --accent: #0b6b66;
+  --accent-wash: rgba(11, 107, 102, 0.09);
+  --s1: #2a78d6;          /* all A&E types */
+  --s2: #eb6834;          /* major (Type 1) departments */
+  --s1-wash: rgba(42, 120, 214, 0.10);
+  --good: #0ca30c;  --good-ink: #006300;
+  --warn: #fab219;  --warn-ink: #7a5300;
+  --crit: #d03b3b;  --crit-ink: #a42323;
+  --tip-bg: #10201f; --tip-ink: #f3f6f6;
+  --font-ui: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1413; --surface: #151f1e; --ink: #edf3f2; --ink-2: #b6c4c2; --muted: #85948f;
+    --grid: #22302e; --axis: #34433f; --line: rgba(255,255,255,0.10);
+    --accent: #4dbab1; --accent-wash: rgba(77,186,177,0.12);
+    --s1: #3987e5; --s2: #d95926; --s1-wash: rgba(57,135,229,0.14);
+    --good-ink: #3cc23c; --warn-ink: #f5bd45; --crit-ink: #f07a7a;
+    --tip-bg: #edf3f2; --tip-ink: #10201f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1413; --surface: #151f1e; --ink: #edf3f2; --ink-2: #b6c4c2; --muted: #85948f;
+  --grid: #22302e; --axis: #34433f; --line: rgba(255,255,255,0.10);
+  --accent: #4dbab1; --accent-wash: rgba(77,186,177,0.12);
+  --s1: #3987e5; --s2: #d95926; --s1-wash: rgba(57,135,229,0.14);
+  --good-ink: #3cc23c; --warn-ink: #f5bd45; --crit-ink: #f07a7a;
+  --tip-bg: #edf3f2; --tip-ink: #10201f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+  display: grid; gap: 20px;
+}
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+.eyebrow {
+  font-family: var(--font-data); font-size: 11.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+
+/* ---------- header */
+header.top { display: grid; gap: 10px; padding-bottom: 4px; }
+header.top h1 { font-size: clamp(28px, 4.2vw, 42px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.08; }
+.thesis { font-size: clamp(16px, 1.8vw, 19px); color: var(--ink-2); max-width: 62ch; margin: 0; }
+.thesis b { color: var(--ink); font-weight: 700; }
+
+/* ---------- filters */
+.filters {
+  display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: end;
+  padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label, .field .lbl { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+select {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 30px 7px 10px; max-width: 100%;
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+  background-size: 5px 5px; background-repeat: no-repeat;
+}
+#f-icb { width: 300px; }
+.seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.seg button {
+  font: inherit; font-size: 13.5px; font-weight: 600; border: 0; background: transparent; color: var(--ink-2);
+  padding: 6px 11px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+}
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 0 0 1px var(--line); }
+button:focus-visible, select:focus-visible, input:focus-visible, th button:focus-visible, .bar-hit:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.reset { font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 8px 4px; cursor: pointer; margin-left: auto; }
+.reset:hover { text-decoration: underline; }
+
+/* ---------- tiles */
+.tiles { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 12px; }
+.tile {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 16px 18px; display: grid; gap: 6px; align-content: start; min-width: 0;
+}
+.tile .label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.tile .value { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.tile.hero .value { font-size: 52px; }
+.tile .sub { font-size: 13px; color: var(--muted); }
+.delta { font-size: 13px; font-weight: 600; display: inline-flex; gap: 4px; align-items: baseline; }
+.delta.good { color: var(--good-ink); } .delta.bad { color: var(--crit-ink); } .delta.flat { color: var(--ink-2); }
+.delta .vs { font-weight: 400; color: var(--muted); }
+.meter { position: relative; height: 26px; margin-top: 6px; }
+.meter .track { position: absolute; left: 0; right: 0; top: 4px; height: 8px; border-radius: 4px; background: var(--grid); }
+.meter .fill { position: absolute; left: 0; top: 4px; height: 8px; border-radius: 4px; background: var(--s1); }
+.meter .tick { position: absolute; top: 0; width: 2px; height: 16px; background: var(--ink); }
+.meter .tick span { position: absolute; top: 15px; transform: translateX(-50%); font-family: var(--font-data); font-size: 10.5px; color: var(--ink-2); white-space: nowrap; }
+
+/* ---------- panels */
+.row2 { display: grid; grid-template-columns: 1.25fr 1fr; gap: 12px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 12px; min-width: 0; align-content: start; }
+.panel-head { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; align-items: baseline; }
+.panel h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.panel .note { font-size: 13px; color: var(--muted); margin: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-line { width: 16px; height: 2px; border-radius: 1px; display: inline-block; }
+.key-ref { width: 16px; height: 0; border-top: 2px dotted var(--ink-2); display: inline-block; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: var(--font-data); font-size: 11px; fill: var(--muted); }
+.chart .lab { fill: var(--ink-2); font-family: var(--font-ui); font-size: 12px; font-weight: 600; }
+.chart .lab-strong { fill: var(--ink); font-family: var(--font-ui); font-size: 12.5px; font-weight: 700; }
+.tip {
+  position: absolute; pointer-events: none; z-index: 4; background: var(--tip-bg); color: var(--tip-ink);
+  border-radius: 8px; padding: 9px 11px; font-size: 12.5px; line-height: 1.35; min-width: 168px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18); opacity: 0; transition: opacity .12s;
+}
+.tip.on { opacity: 1; }
+.tip .t-h { font-weight: 700; margin-bottom: 5px; }
+.tip .t-r { display: grid; grid-template-columns: 14px auto 1fr; gap: 6px; align-items: center; }
+.tip .t-r b { font-variant-numeric: tabular-nums; }
+.tip .t-r span:last-child { opacity: 0.8; }
+.tip .t-m { opacity: 0.75; margin-top: 4px; }
+details.figs summary { font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer; width: max-content; }
+.mini-table { overflow-x: auto; }
+.mini-table table { border-collapse: collapse; font-size: 13px; width: 100%; margin-top: 8px; }
+.mini-table th, .mini-table td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mini-table th:first-child, .mini-table td:first-child { text-align: left; }
+.mini-table th { font-weight: 600; color: var(--ink-2); }
+
+/* ---------- region bars */
+.bar-hit { cursor: pointer; }
+.bar-hit:hover .bar { filter: brightness(1.08); }
+
+/* ---------- trust table */
+.tbl-tools { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.search {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px; width: 260px; max-width: 100%;
+}
+.count { font-size: 13px; color: var(--muted); }
+.tbl-wrap { overflow-x: auto; margin: 0 -18px; padding: 0 18px; }
+table.trusts { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 14px; }
+table.trusts th { text-align: right; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 0 10px 8px; border-bottom: 1px solid var(--axis); white-space: nowrap; vertical-align: bottom; }
+table.trusts th:first-child, table.trusts td:first-child { text-align: left; padding-left: 0; min-width: 240px; }
+table.trusts th button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+table.trusts th button:hover { color: var(--accent); }
+table.trusts th .arr { font-size: 10px; color: var(--accent); width: 8px; }
+table.trusts td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; vertical-align: middle; }
+table.trusts tbody tr:hover { background: var(--accent-wash); }
+.tname { font-weight: 600; line-height: 1.3; }
+.tsub { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.flag { font-size: 11.5px; color: var(--ink-2); background: var(--grid); border-radius: 4px; padding: 1px 6px; margin-left: 6px; white-space: nowrap; font-weight: 500; }
+.pct-cell { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.pbar { width: 64px; height: 6px; border-radius: 3px; background: var(--grid); position: relative; overflow: hidden; }
+.pbar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--s1); border-radius: 3px; }
+.pbar.t1 i { background: var(--s2); }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip svg { flex: none; }
+.chip.good { color: var(--good-ink); } .chip.warn { color: var(--warn-ink); } .chip.crit { color: var(--crit-ink); }
+.more { font: inherit; font-size: 13.5px; font-weight: 600; color: var(--accent); background: var(--accent-wash); border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; justify-self: start; }
+.empty { padding: 18px 0; color: var(--muted); }
+
+/* ---------- notes */
+.notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.notes .panel p, .notes .panel li { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+.notes .panel ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.notes h3 { font-size: 14.5px; font-weight: 700; }
+.notes a { color: var(--accent); }
+footer { font-size: 12.5px; color: var(--muted); display: grid; gap: 4px; }
+
+@media (max-width: 980px) {
+  .tiles { grid-template-columns: 1fr 1fr; }
+  .row2, .notes { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .tiles { grid-template-columns: 1fr; }
+  .tile.hero .value { font-size: 44px; }
+  .filters { position: static; }
+  #f-icb { width: 100%; }
+  .field { flex: 1 1 100%; }
+  .reset { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">A&amp;E four-hour performance · England · April to September 2026</div>
+    <h1>England A&amp;E Waits</h1>
+    <p class="thesis" id="thesis"></p>
+  </header>
+
+  <section class="filters" aria-label="Filters">
+    <div class="field">
+      <label for="f-region">Region</label>
+      <select id="f-region"></select>
+    </div>
+    <div class="field">
+      <label for="f-icb">Local health system (ICB)</label>
+      <select id="f-icb"></select>
+    </div>
+    <div class="field">
+      <label for="f-month">Month</label>
+      <select id="f-month"></select>
+    </div>
+    <div class="field">
+      <span class="lbl" id="lbl-measure">Measure</span>
+      <div class="seg" role="group" aria-labelledby="lbl-measure">
+        <button type="button" id="m-all" aria-pressed="true">All A&amp;E types</button>
+        <button type="button" id="m-t1" aria-pressed="false">Major A&amp;E (Type 1)</button>
+      </div>
+    </div>
+    <button type="button" class="reset" id="reset">Reset to England</button>
+  </section>
+
+  <section class="tiles" aria-label="Headline figures" id="tiles"></section>
+
+  <section class="row2">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Patients seen within four hours, by month</h2>
+          <p class="note" id="trend-scope"></p>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <span><i class="key-line" style="background:var(--s1)"></i>All A&amp;E types</span>
+          <span><i class="key-line" style="background:var(--s2)"></i>Major A&amp;E (Type 1)</span>
+          <span><i class="key-ref"></i>82% target</span>
+        </div>
+      </div>
+      <div class="chart" id="trend"><div class="tip" id="trend-tip"></div></div>
+      <details class="figs">
+        <summary>Show the figures</summary>
+        <div class="mini-table" id="trend-table"></div>
+      </details>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Regions compared</h2>
+          <p class="note" id="bars-note"></p>
+        </div>
+      </div>
+      <div class="chart" id="bars"><div class="tip" id="bars-tip"></div></div>
+      <p class="note">Select a region to filter the whole page.</p>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="tbl-h">
+    <div class="panel-head">
+      <div>
+        <h2 id="tbl-h">Trusts and providers</h2>
+        <p class="note" id="tbl-note"></p>
+      </div>
+      <div class="tbl-tools">
+        <div class="seg" role="group" aria-label="Which providers to list">
+          <button type="button" id="p-t1" aria-pressed="true">Major A&amp;E trusts</button>
+          <button type="button" id="p-all" aria-pressed="false">All providers</button>
+        </div>
+        <input class="search" id="search" type="search" placeholder="Search by name" aria-label="Search providers by name">
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="trusts">
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="tbl-tools">
+      <button type="button" class="more" id="more"></button>
+      <span class="count" id="count"></span>
+    </div>
+  </section>
+
+  <section class="notes" aria-label="About the data">
+    <div class="panel">
+      <h3>What the measures mean</h3>
+      <ul>
+        <li><strong>Within four hours</strong>: the share of A&amp;E attendances where the patient was admitted, transferred or discharged within four hours of arriving.</li>
+        <li><strong>Major A&amp;E (Type 1)</strong>: consultant-led, 24-hour emergency departments with full resuscitation facilities. All types also includes urgent treatment centres, walk-in centres and minor injury units.</li>
+        <li><strong>12-hour waits</strong>: patients who waited more than 12 hours between the decision to admit them and actually getting a bed.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Targets</h3>
+      <ul>
+        <li>The NHS Constitution standard is <strong>95%</strong> within four hours. England last met it in 2015.</li>
+        <li>For 2026-27, trusts are asked to reach <strong>82%</strong> across all A&amp;E types. The longer-term aim is 85% by 2028-29.</li>
+        <li>Status labels in the table compare each provider's all-types figure with the 82% target.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Changes to watch</h3>
+      <ul>
+        <li><strong>Bristol merger.</strong> North Bristol NHS Trust stops reporting after June 2026. From July its activity is included in Bristol NHS Foundation Trust, which explains that trust's jump in attendances.</li>
+        <li>Two Leicestershire urgent care sites report from May 2026 only.</li>
+        <li>Ashford Walk-In-Centre is missing from NHS England's ICB mapping file, so it appears under its region only.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <div>Source: NHS England, <a style="color:var(--accent)" href="https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/ae-attendances-and-emergency-admissions-2026-27/" target="_blank" rel="noopener">A&amp;E Attendances and Emergency Admissions 2026-27</a>, monthly provider-level data, April to September 2026, with the April 2026 ICB mapping file. Provider rows reconcile exactly to NHS England's published totals for every month.</div>
+    <div>An independent analysis of published official statistics. This is not an NHS publication. <span id="built"></span></div>
+  </footer>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+(function () {
+  "use strict";
+  const MONTHS = DATA.months;
+  const MLABEL = MONTHS.map(m => ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m.slice(5, 7) - 1]);
+  const MLONG = MONTHS.map(m => new Date(m + "T00:00:00").toLocaleString("en-GB", { month: "long", year: "numeric" }));
+  const TARGET = 0.82;
+  const ORGS = DATA.orgs;
+  const NOTES = {
+    RA7: "Merged with North Bristol from Jul",
+    RVJ: "Merged into Bristol NHS FT from Jul",
+    NTV0B: "No ICB in mapping file",
+  };
+  const REGIONS = [...new Set(ORGS.map(o => o.r))].sort();
+
+  const state = { region: "", icb: "", month: MONTHS.length - 1, measure: "all", providers: "t1", sort: "pct", dir: 1, q: "", showAll: false };
+  try {
+    const saved = JSON.parse(localStorage.getItem("ae-dash") || "null");
+    if (saved && typeof saved === "object") Object.assign(state, { measure: saved.measure || "all", providers: saved.providers || "t1" });
+  } catch (e) {}
+  function save() { try { localStorage.setItem("ae-dash", JSON.stringify({ measure: state.measure, providers: state.providers })); } catch (e) {} }
+
+  // ---------- helpers
+  const $ = id => document.getElementById(id);
+  const fmtInt = n => n == null ? "–" : Math.round(n).toLocaleString("en-GB");
+  const fmtPct = (p, dp = 1) => p == null || !isFinite(p) ? "–" : (p * 100).toFixed(dp) + "%";
+  const fmtCompact = n => n >= 1e6 ? (n / 1e6).toFixed(2) + "m" : n >= 1e4 ? (n / 1e3).toFixed(1) + "k" : fmtInt(n);
+  const ratio = (a, b) => b > 0 ? a / b : null;
+  const svgNS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(svgNS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function txt(parent, x, y, s, attrs = {}) { const t = el("text", Object.assign({ x, y }, attrs), parent); t.textContent = s; return t; }
+  function h(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function inScope(o) { return (!state.region || o.r === state.region) && (!state.icb || o.i === state.icb); }
+  function sumSeries(list, key) {
+    return MONTHS.map((_, i) => list.reduce((s, o) => s + (o[key][i] || 0), 0));
+  }
+  function agg(list) {
+    const a = sumSeries(list, "a"), w = sumSeries(list, "w"), a1 = sumSeries(list, "a1"), w1 = sumSeries(list, "w1");
+    return { a, w, a1, w1, x12: sumSeries(list, "x12"), ea: sumSeries(list, "ea"),
+      pAll: a.map((v, i) => ratio(w[i], v)), pT1: a1.map((v, i) => ratio(w1[i], v)) };
+  }
+  function scopeName() {
+    if (state.icb) return state.icb.replace(/^NHS /, "").replace(/ Integrated Care Board$/, " ICB");
+    if (state.region) return state.region;
+    return "England";
+  }
+  function orgPct(o, i, measure) {
+    return measure === "t1" ? ratio(o.w1[i], o.a1[i]) : ratio(o.w[i], o.a[i]);
+  }
+  function status(p) {
+    if (p == null) return null;
+    if (p >= TARGET) return { cls: "good", text: "On target" };
+    if (p >= 0.70) return { cls: "warn", text: "Below target" };
+    return { cls: "crit", text: "Well below" };
+  }
+  function statusIcon(cls) {
+    const s = document.createElementNS(svgNS, "svg");
+    s.setAttribute("width", "12"); s.setAttribute("height", "12"); s.setAttribute("viewBox", "0 0 12 12"); s.setAttribute("aria-hidden", "true");
+    const c = { good: "var(--good)", warn: "var(--warn)", crit: "var(--crit)" }[cls];
+    if (cls === "good") { el("circle", { cx: 6, cy: 6, r: 6, fill: c }, s); el("path", { d: "M3.3 6.2l1.8 1.8 3.6-3.8", stroke: "#fff", "stroke-width": 1.6, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" }, s); }
+    else if (cls === "warn") { el("path", { d: "M6 0.8L11.4 10.6H0.6Z", fill: c }, s); el("rect", { x: 5.3, y: 4, width: 1.4, height: 3.6, rx: 0.7, fill: "#3a2a00" }, s); el("circle", { cx: 6, cy: 9, r: 0.8, fill: "#3a2a00" }, s); }
+    else { el("rect", { x: 0.5, y: 0.5, width: 11, height: 11, rx: 2.5, fill: c }, s); el("path", { d: "M3.8 3.8l4.4 4.4M8.2 3.8l-4.4 4.4", stroke: "#fff", "stroke-width": 1.6, "stroke-linecap": "round" }, s); }
+    return s;
+  }
+
+  // ---------- filters
+  function fillSelect(sel, opts, value) {
+    sel.replaceChildren();
+    for (const [v, label] of opts) { const o = document.createElement("option"); o.value = v; o.textContent = label; sel.appendChild(o); }
+    sel.value = value;
+  }
+  function renderFilters() {
+    fillSelect($("f-region"), [["", "All England"], ...REGIONS.map(r => [r, r])], state.region);
+    const icbs = [...new Set(ORGS.filter(o => !state.region || o.r === state.region).map(o => o.i))].sort();
+    if (state.icb && !icbs.includes(state.icb)) state.icb = "";
+    fillSelect($("f-icb"), [["", state.region ? "All ICBs in " + state.region : "All ICBs"], ...icbs.map(i => [i, i.replace(/^NHS /, "").replace(/ Integrated Care Board$/, "")])], state.icb);
+    fillSelect($("f-month"), MONTHS.map((m, i) => [String(i), MLONG[i]]), String(state.month));
+    $("m-all").setAttribute("aria-pressed", state.measure === "all");
+    $("m-t1").setAttribute("aria-pressed", state.measure === "t1");
+    $("p-t1").setAttribute("aria-pressed", state.providers === "t1");
+    $("p-all").setAttribute("aria-pressed", state.providers === "all");
+    $("reset").hidden = !state.region && !state.icb;
+  }
+
+  // ---------- thesis + tiles
+  function delta(cur, base, kind) {
+    // kind: "pp" percentage points (up good) | "pct-neutral" | "pct-bad" (up bad)
+    const span = h("span", "delta");
+    if (cur == null || base == null) { span.classList.add("flat"); span.textContent = "–"; return span; }
+    let txtv, dir;
+    if (kind === "pp") { const d = (cur - base) * 100; dir = Math.abs(d) < 0.05 ? 0 : Math.sign(d); txtv = (d > 0 ? "+" : d < 0 ? "−" : "") + Math.abs(d).toFixed(1) + " pts"; }
+    else { const d = base > 0 ? (cur - base) / base * 100 : 0; dir = Math.abs(d) < 0.5 ? 0 : Math.sign(d); txtv = (d > 0 ? "+" : d < 0 ? "−" : "") + Math.abs(d).toFixed(1) + "%"; }
+    const goodDir = kind === "pp" ? 1 : kind === "pct-bad" ? -1 : 0;
+    span.classList.add(dir === 0 || goodDir === 0 ? "flat" : dir === goodDir ? "good" : "bad");
+    span.append((dir > 0 ? "▲ " : dir < 0 ? "▼ " : "") + txtv);
+    if (state.month > 0) { const vs = h("span", "vs", "vs " + MLABEL[0]); span.append(" ", vs); }
+    return span;
+  }
+  function renderTiles(A, list) {
+    const i = state.month, p = state.measure === "t1" ? A.pT1 : A.pAll;
+    const tiles = $("tiles"); tiles.replaceChildren();
+
+    // hero
+    const t1 = h("div", "tile hero");
+    t1.append(h("div", "label", (state.measure === "t1" ? "Major A&E (Type 1) patients" : "Patients") + " seen within 4 hours"));
+    t1.append(h("div", "value", fmtPct(p[i])));
+    if (state.month > 0) t1.append(delta(p[i], p[0], "pp"));
+    const gap = p[i] != null ? (TARGET - p[i]) * 100 : null;
+    t1.append(h("div", "sub", gap == null ? "" : gap > 0 ? gap.toFixed(1) + " points short of the 82% target" : "Meets the 82% target"));
+    const m = h("div", "meter"); m.setAttribute("aria-hidden", "true");
+    const tr = h("div", "track"), fi = h("div", "fill"); fi.style.width = Math.max(0, Math.min(1, p[i] || 0)) * 100 + "%";
+    if (state.measure === "t1") fi.style.background = "var(--s2)";
+    m.append(tr, fi);
+    for (const [v, l] of [[0.82, "82%"], [0.95, "95%"]]) { const tk = h("div", "tick"); tk.style.left = "calc(" + v * 100 + "% - 1px)"; const s = h("span", null, l); tk.append(s); m.append(tk); }
+    t1.append(m); tiles.append(t1);
+
+    // attendances
+    const t2 = h("div", "tile");
+    t2.append(h("div", "label", "A&E attendances"), h("div", "value", fmtInt(A.a[i])));
+    if (state.month > 0) t2.append(delta(A.a[i], A.a[0], "pct-neutral"));
+    t2.append(h("div", "sub", "Type 1: " + fmtInt(A.a1[i]) + " · other: " + fmtInt(A.a[i] - A.a1[i])));
+    tiles.append(t2);
+
+    // 12 hour waits
+    const t3 = h("div", "tile");
+    t3.append(h("div", "label", "Waited 12+ hours for a bed"), h("div", "value", fmtInt(A.x12[i])));
+    if (state.month > 0) t3.append(delta(A.x12[i], A.x12[0], "pct-bad"));
+    const per = A.ea[i] > 0 ? A.x12[i] / A.ea[i] : null;
+    t3.append(h("div", "sub", per == null ? "After the decision to admit" : "After the decision to admit · " + fmtPct(per) + " of emergency admissions"));
+    tiles.append(t3);
+
+    // trusts on target
+    const t1s = list.filter(o => o.t1 && o.a[i]);
+    const on = t1s.filter(o => orgPct(o, i, "all") >= TARGET).length;
+    const t4 = h("div", "tile");
+    t4.append(h("div", "label", "Major A&E trusts meeting 82%"), h("div", "value", t1s.length ? on + " of " + t1s.length : "–"));
+    t4.append(h("div", "sub", t1s.length ? "Judged on all A&E types, " + MLONG[i] : "No major A&E trusts in this area"));
+    tiles.append(t4);
+
+    // thesis
+    const th = $("thesis"); th.replaceChildren();
+    const pA = A.pAll;
+    const b1 = h("b", null, fmtPct(pA[i]));
+    th.append("The standard is 95% of patients seen within four hours, and this year's target is 82%. In " + MLONG[i] + ", " + scopeName() + " managed ", b1);
+    if (state.month > 0 && pA[0] != null) {
+      const d = (pA[i] - pA[0]) * 100;
+      th.append(Math.abs(d) < 0.05 ? ", level with April." : ", " + (d < 0 ? "down " : "up ") + Math.abs(d).toFixed(1) + " points since April.");
+    } else th.append(".");
+  }
+
+  // ---------- trend chart
+  let trendCache = null;
+  function renderTrend(A) {
+    const box = $("trend"), tip = $("trend-tip");
+    box.querySelectorAll("svg").forEach(s => s.remove());
+    const W = Math.max(300, box.clientWidth), H = W < 480 ? 250 : 290;
+    const m = { l: 40, r: W < 480 ? 92 : 112, t: 14, b: 30 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const vals = [...A.pAll, ...A.pT1].filter(v => v != null);
+    let lo = Math.floor((Math.min(...vals, TARGET) * 100 - 4) / 5) * 5, hi = Math.ceil((Math.max(...vals, TARGET) * 100 + 3) / 5) * 5;
+    lo = Math.max(0, lo); hi = Math.min(100, hi);
+    const x = i => m.l + (MONTHS.length === 1 ? iw / 2 : i * iw / (MONTHS.length - 1));
+    const y = v => m.t + ih - ((v * 100 - lo) / (hi - lo)) * ih;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Line chart: share of patients seen within four hours in ${scopeName()}, April to September 2026, all A&E types and major A&E departments, against the 82% target.` });
+    box.insertBefore(svg, tip);
+
+    for (let v = lo; v <= hi; v += 5) {
+      el("line", { x1: m.l, x2: m.l + iw, y1: y(v / 100), y2: y(v / 100), stroke: "var(--grid)", "stroke-width": 1 }, svg);
+      txt(svg, m.l - 8, y(v / 100) + 4, v + "%", { "text-anchor": "end" });
+    }
+    MONTHS.forEach((_, i) => txt(svg, x(i), H - 8, MLABEL[i], { "text-anchor": "middle" }));
+    // selected month band
+    el("rect", { x: x(state.month) - 14, y: m.t, width: 28, height: ih, fill: "var(--accent-wash)", rx: 4 }, svg);
+    // target
+    el("line", { x1: m.l, x2: m.l + iw, y1: y(TARGET), y2: y(TARGET), stroke: "var(--ink-2)", "stroke-width": 2, "stroke-dasharray": "1 4", "stroke-linecap": "round" }, svg);
+    txt(svg, m.l + iw + 10, y(TARGET) + 4, "82% target", { class: "lab" });
+
+    const series = [{ key: "pAll", color: "var(--s1)", name: "All types" }, { key: "pT1", color: "var(--s2)", name: "Type 1" }];
+    // area wash under the all-types line
+    const pts = A.pAll.map((v, i) => v == null ? null : [x(i), y(v)]).filter(Boolean);
+    if (pts.length > 1) el("path", { d: "M" + pts.map(p => p.join(",")).join("L") + `L${pts[pts.length - 1][0]},${m.t + ih}L${pts[0][0]},${m.t + ih}Z`, fill: "var(--s1-wash)" }, svg);
+    const ends = [];
+    for (const s of series) {
+      const P = A[s.key].map((v, i) => v == null ? null : [x(i), y(v)]);
+      const d = P.reduce((acc, p, i) => p ? acc + (acc && P[i - 1] ? "L" : "M") + p.join(",") : acc, "");
+      if (d) el("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+      const li = P.length - 1;
+      if (P[li]) { el("circle", { cx: P[li][0], cy: P[li][1], r: 4.5, fill: s.color, stroke: "var(--surface)", "stroke-width": 2 }, svg); ends.push({ y: P[li][1], s, v: A[s.key][li] }); }
+    }
+    // end labels with simple collision avoidance against each other and the target label
+    ends.sort((a, b) => a.y - b.y);
+    const taken = [y(TARGET)];
+    ends.forEach(e => {
+      let ly = e.y;
+      for (const t of taken) if (Math.abs(ly - t) < 16) ly = t + (ly >= t ? 16 : -16);
+      taken.push(ly);
+      txt(svg, m.l + iw + 10, ly + 4, fmtPct(e.v) + " " + e.s.name, { class: "lab-strong" });
+    });
+    // hover layer
+    const cross = el("line", { y1: m.t, y2: m.t + ih, stroke: "var(--axis)", "stroke-width": 1, opacity: 0 }, svg);
+    const dots = series.map(s => el("circle", { r: 4.5, fill: s.color, stroke: "var(--surface)", "stroke-width": 2, opacity: 0 }, svg));
+    const hit = el("rect", { x: m.l - 10, y: m.t, width: iw + 20, height: ih, fill: "transparent", tabindex: 0, "aria-label": "Monthly values; use left and right arrow keys" }, svg);
+    let cur = -1;
+    function show(i) {
+      cur = i;
+      cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", 1);
+      series.forEach((s, k) => { const v = A[s.key][i]; if (v == null) { dots[k].setAttribute("opacity", 0); return; } dots[k].setAttribute("cx", x(i)); dots[k].setAttribute("cy", y(v)); dots[k].setAttribute("opacity", 1); });
+      tip.replaceChildren();
+      tip.append(h("div", "t-h", MLONG[i]));
+      series.forEach(s => { const r = h("div", "t-r"); const k = h("i", "key-line"); k.style.background = s.color; r.append(k, h("b", null, fmtPct(A[s.key][i])), h("span", null, s.key === "pAll" ? "all A&E types" : "major A&E (Type 1)")); tip.append(r); });
+      tip.append(h("div", "t-m", fmtInt(A.a[i]) + " attendances · " + fmtInt(A.x12[i]) + " waited 12+ hrs for a bed"));
+      const scale = box.clientWidth / W;
+      const left = x(i) * scale, tw = tip.offsetWidth || 200;
+      tip.style.left = Math.max(0, Math.min(box.clientWidth - tw, left + (left > box.clientWidth / 2 ? -tw - 12 : 12))) + "px";
+      tip.style.top = (m.t * scale) + "px";
+      tip.classList.add("on");
+    }
+    function hide() { cur = -1; cross.setAttribute("opacity", 0); dots.forEach(d => d.setAttribute("opacity", 0)); tip.classList.remove("on"); }
+    hit.addEventListener("pointermove", ev => {
+      const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * (W / r.width);
+      let best = 0, bd = Infinity; MONTHS.forEach((_, i) => { const d = Math.abs(x(i) - px); if (d < bd) { bd = d; best = i; } });
+      show(best);
+    });
+    hit.addEventListener("pointerleave", hide);
+    hit.addEventListener("focus", () => show(state.month));
+    hit.addEventListener("blur", hide);
+    hit.addEventListener("keydown", ev => {
+      if (ev.key === "ArrowRight") { show(Math.min(MONTHS.length - 1, (cur < 0 ? state.month : cur) + 1)); ev.preventDefault(); }
+      if (ev.key === "ArrowLeft") { show(Math.max(0, (cur < 0 ? state.month : cur) - 1)); ev.preventDefault(); }
+    });
+
+    $("trend-scope").textContent = scopeName() + ", April to September 2026";
+    // figures table
+    const t = document.createElement("table");
+    const hr = document.createElement("tr");
+    ["Month", "Attendances", "Within 4 hrs (all)", "Within 4 hrs (Type 1)", "12+ hr waits"].forEach(c => hr.append(h("th", null, c)));
+    const thead = document.createElement("thead"); thead.append(hr); t.append(thead);
+    const tb = document.createElement("tbody");
+    MONTHS.forEach((_, i) => { const r = document.createElement("tr"); [MLONG[i], fmtInt(A.a[i]), fmtPct(A.pAll[i]), fmtPct(A.pT1[i]), fmtInt(A.x12[i])].forEach(c => r.append(h("td", null, c))); tb.append(r); });
+    t.append(tb); $("trend-table").replaceChildren(t);
+  }
+
+  // ---------- region bars
+  function renderBars() {
+    const box = $("bars"), tip = $("bars-tip");
+    box.querySelectorAll("svg").forEach(s => s.remove());
+    const i = state.month, key = state.measure === "t1" ? "pT1" : "pAll";
+    const rows = REGIONS.map(r => { const A = agg(ORGS.filter(o => o.r === r)); return { r, p: A[key][i], a: A.a[i], a1: A.a1[i], x12: A.x12[i], first: A[key][0] }; })
+      .sort((a, b) => (b.p ?? -1) - (a.p ?? -1));
+    const W = Math.max(300, box.clientWidth), rowH = 34, labW = W < 420 ? 118 : 170;
+    const m = { l: labW, r: 64, t: 6, b: 26 };
+    const iw = W - m.l - m.r, H = m.t + rows.length * rowH + m.b;
+    const x = v => m.l + v * iw;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Bar chart of the share of patients seen within four hours by NHS region, ${MLONG[i]}.` });
+    box.insertBefore(svg, tip);
+    for (const v of [0, 0.25, 0.5, 0.75, 1]) {
+      el("line", { x1: x(v), x2: x(v), y1: m.t, y2: m.t + rows.length * rowH, stroke: "var(--grid)", "stroke-width": 1 }, svg);
+      txt(svg, x(v), H - 8, Math.round(v * 100) + "%", { "text-anchor": v === 0 ? "start" : v === 1 ? "end" : "middle" });
+    }
+    rows.forEach((row, k) => {
+      const cy = m.t + k * rowH + rowH / 2, bh = 18, sel = row.r === state.region, dim = state.region && !sel;
+      const g = el("g", { class: "bar-hit", tabindex: 0, role: "button", "aria-pressed": sel ? "true" : "false", "aria-label": `${row.r}: ${fmtPct(row.p)}. Select to filter.` }, svg);
+      el("rect", { x: 0, y: cy - rowH / 2, width: W, height: rowH, fill: sel ? "var(--accent-wash)" : "transparent", rx: 6 }, g);
+      const lab = txt(g, labW - 10, cy + 4, row.r.replace("North East and Yorkshire", W < 420 ? "NE & Yorkshire" : "North East & Yorks"), { class: sel ? "lab-strong" : "lab", "text-anchor": "end" });
+      const w = Math.max(0, (row.p || 0) * iw), r = Math.min(4, w / 2);
+      el("path", { class: "bar", d: `M${x(0)},${cy - bh / 2}H${x(0) + w - r}a${r},${r} 0 0 1 ${r},${r}V${cy + bh / 2 - r}a${r},${r} 0 0 1 ${-r},${r}H${x(0)}Z`, fill: state.measure === "t1" ? "var(--s2)" : "var(--s1)", opacity: dim ? 0.35 : 1 }, g);
+      txt(g, W - 2, cy + 4, fmtPct(row.p), { class: "lab", "text-anchor": "end" });
+      function showTip() {
+        tip.replaceChildren(); tip.append(h("div", "t-h", row.r + " · " + MLONG[i]));
+        const r1 = h("div", "t-r"); const k1 = h("i", "key-line"); k1.style.background = state.measure === "t1" ? "var(--s2)" : "var(--s1)";
+        r1.append(k1, h("b", null, fmtPct(row.p)), h("span", null, "within 4 hours")); tip.append(r1);
+        if (state.month > 0 && row.first != null) { const d = (row.p - row.first) * 100; tip.append(h("div", "t-m", (d >= 0 ? "+" : "−") + Math.abs(d).toFixed(1) + " pts since April")); }
+        tip.append(h("div", "t-m", fmtInt(row.a) + " attendances · " + fmtInt(row.x12) + " waited 12+ hrs"));
+        const scale = box.clientWidth / W; const tw = tip.offsetWidth || 200;
+        tip.style.left = Math.max(0, Math.min(box.clientWidth - tw, (x(0) + w) * scale - tw / 2)) + "px";
+        tip.style.top = Math.max(0, (cy + rowH / 2 + 4) * scale) + "px";
+        tip.classList.add("on");
+      }
+      g.addEventListener("pointerenter", showTip); g.addEventListener("focus", showTip);
+      g.addEventListener("pointerleave", () => tip.classList.remove("on")); g.addEventListener("blur", () => tip.classList.remove("on"));
+      const act = () => { state.region = sel ? "" : row.r; state.icb = ""; state.showAll = false; renderAll(); };
+      g.addEventListener("click", act);
+      g.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); act(); } });
+    });
+    // target line over bars
+    el("line", { x1: x(TARGET), x2: x(TARGET), y1: m.t - 2, y2: m.t + rows.length * rowH, stroke: "var(--ink-2)", "stroke-width": 2, "stroke-dasharray": "1 4", "stroke-linecap": "round", "pointer-events": "none" }, svg);
+    $("bars-note").textContent = (state.measure === "t1" ? "Major A&E (Type 1) only" : "All A&E types") + ", " + MLONG[i] + ". Dotted line: 82% target.";
+  }
+
+  // ---------- table
+  const COLS = [
+    { id: "name", label: "Provider", sort: o => o.n },
+    { id: "att", label: "Attendances", sort: o => o._a },
+    { id: "pct", label: "Within 4 hrs", sort: o => o._p },
+    { id: "chg", label: "Change since Apr", sort: o => o._d },
+    { id: "x12", label: "12+ hr waits", sort: o => o._x },
+    { id: "trend", label: "Apr–Sep", sort: null },
+    { id: "status", label: "Against 82%", sort: o => o._s },
+  ];
+  function renderHead() {
+    const tr = $("thead"); tr.replaceChildren();
+    COLS.forEach(c => {
+      const th = document.createElement("th");
+      if (c.sort) {
+        const b = document.createElement("button"); b.type = "button";
+        b.append(c.label); const arr = h("span", "arr", state.sort === c.id ? (state.dir > 0 ? "▲" : "▼") : ""); b.append(arr);
+        th.setAttribute("aria-sort", state.sort === c.id ? (state.dir > 0 ? "ascending" : "descending") : "none");
+        b.addEventListener("click", () => { if (state.sort === c.id) state.dir *= -1; else { state.sort = c.id; state.dir = c.id === "name" || c.id === "pct" ? 1 : -1; } renderTable(); });
+        th.append(b);
+      } else th.textContent = c.label;
+      tr.append(th);
+    });
+  }
+  function spark(o, key) {
+    const W = 84, H = 26, lo = 0.4, hi = 1;
+    const s = document.createElementNS(svgNS, "svg"); s.setAttribute("width", W); s.setAttribute("height", H); s.setAttribute("viewBox", `0 0 ${W} ${H}`); s.setAttribute("aria-hidden", "true");
+    const x = i => 3 + i * (W - 6) / (MONTHS.length - 1), y = v => 3 + (H - 6) * (1 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo));
+    el("line", { x1: 0, x2: W, y1: y(TARGET), y2: y(TARGET), stroke: "var(--axis)", "stroke-width": 1, "stroke-dasharray": "2 2" }, s);
+    const P = MONTHS.map((_, i) => { const v = orgPct(o, i, key); return v == null ? null : [x(i), y(v)]; });
+    const d = P.reduce((acc, p, i) => p ? acc + (acc && P[i - 1] ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1) : acc, "");
+    if (d) el("path", { d, fill: "none", stroke: key === "t1" ? "var(--s2)" : "var(--s1)", "stroke-width": 1.75, "stroke-linejoin": "round", "stroke-linecap": "round" }, s);
+    const p = P[state.month]; if (p) el("circle", { cx: p[0], cy: p[1], r: 3, fill: key === "t1" ? "var(--s2)" : "var(--s1)", stroke: "var(--surface)", "stroke-width": 1.5 }, s);
+    return s;
+  }
+  function renderTable() {
+    renderHead();
+    const i = state.month, key = state.measure;
+    const q = state.q.trim().toLowerCase();
+    let rows = ORGS.filter(inScope)
+      .filter(o => state.providers === "all" || o.t1)
+      .filter(o => o.a[i] != null && (key === "all" ? o.a[i] > 0 : o.a1[i] > 0))
+      .filter(o => !q || o.n.toLowerCase().includes(q) || o.c.toLowerCase() === q);
+    rows.forEach(o => {
+      o._a = key === "t1" ? o.a1[i] : o.a[i];
+      o._p = orgPct(o, i, key);
+      const p0 = orgPct(o, 0, key);
+      o._d = state.month > 0 && p0 != null && o._p != null ? o._p - p0 : null;
+      o._x = o.x12[i];
+      const st = status(orgPct(o, i, "all")); o._s = orgPct(o, i, "all"); o._st = st;
+    });
+    const col = COLS.find(c => c.id === state.sort) || COLS[2];
+    rows.sort((a, b) => {
+      const va = col.sort(a), vb = col.sort(b);
+      if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+      return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * state.dir;
+    });
+    const total = rows.length, LIMIT = 15;
+    const shown = state.showAll ? rows : rows.slice(0, LIMIT);
+    const tb = $("tbody"); tb.replaceChildren();
+    if (!shown.length) { const tr = document.createElement("tr"); const td = h("td", "empty", q ? "No providers match “" + state.q + "”." : "No providers report this measure here."); td.colSpan = COLS.length; tr.append(td); tb.append(tr); }
+    shown.forEach(o => {
+      const tr = document.createElement("tr");
+      const tdN = document.createElement("td");
+      const nm = h("div", "tname", o.n); if (NOTES[o.c]) nm.append(h("span", "flag", NOTES[o.c]));
+      tdN.append(nm, h("div", "tsub", state.icb ? o.r : o.i.replace(/^NHS /, "").replace(/ Integrated Care Board$/, " ICB")));
+      const tdA = h("td", null, fmtInt(o._a));
+      const tdP = document.createElement("td"); const pc = h("span", "pct-cell");
+      const bar = h("span", "pbar" + (key === "t1" ? " t1" : "")); const fill = document.createElement("i"); fill.style.width = (o._p || 0) * 100 + "%"; bar.append(fill);
+      pc.append(h("span", null, fmtPct(o._p)), bar); tdP.append(pc);
+      const tdD = document.createElement("td");
+      if (o._d == null) tdD.textContent = "–"; else { const d = o._d * 100; tdD.textContent = (d > 0.05 ? "+" : d < -0.05 ? "−" : "") + Math.abs(d).toFixed(1) + " pts"; tdD.style.color = d > 0.05 ? "var(--good-ink)" : d < -0.05 ? "var(--crit-ink)" : "var(--ink-2)"; }
+      const tdX = h("td", null, o.t1 || o._x ? fmtInt(o._x) : "–");
+      const tdS = document.createElement("td"); tdS.append(spark(o, key));
+      const tdC = document.createElement("td");
+      if (o._st) { const c = h("span", "chip " + o._st.cls); c.append(statusIcon(o._st.cls), o._st.text); tdC.append(c); } else tdC.textContent = "–";
+      tr.append(tdN, tdA, tdP, tdD, tdX, tdS, tdC); tb.append(tr);
+    });
+    const more = $("more");
+    more.hidden = total <= LIMIT;
+    more.textContent = state.showAll ? "Show fewer" : "Show all " + total;
+    $("count").textContent = total ? "Showing " + shown.length + " of " + total : "";
+    $("tbl-note").textContent = scopeName() + ", " + MLONG[i] + ". " + (key === "t1" ? "Figures for major (Type 1) departments only. " : "") + "Select a column heading to sort.";
+  }
+
+  // ---------- orchestration
+  function renderAll() {
+    renderFilters();
+    const list = ORGS.filter(inScope);
+    const A = agg(list);
+    renderTiles(A, list);
+    renderTrend(A);
+    renderBars();
+    renderTable();
+  }
+  $("f-region").addEventListener("change", e => { state.region = e.target.value; state.icb = ""; state.showAll = false; renderAll(); });
+  $("f-icb").addEventListener("change", e => {
+    state.icb = e.target.value;
+    if (state.icb && !state.region) { const o = ORGS.find(o => o.i === state.icb); if (o) state.region = o.r; }
+    state.showAll = false; renderAll();
+  });
+  $("f-month").addEventListener("change", e => { state.month = +e.target.value; renderAll(); });
+  $("m-all").addEventListener("click", () => { state.measure = "all"; save(); renderAll(); });
+  $("m-t1").addEventListener("click", () => { state.measure = "t1"; save(); renderAll(); });
+  $("p-t1").addEventListener("click", () => { state.providers = "t1"; state.showAll = false; save(); renderAll(); });
+  $("p-all").addEventListener("click", () => { state.providers = "all"; state.showAll = false; save(); renderAll(); });
+  $("reset").addEventListener("click", () => { state.region = ""; state.icb = ""; state.showAll = false; renderAll(); });
+  $("search").addEventListener("input", e => { state.q = e.target.value; state.showAll = false; renderTable(); });
+  $("more").addEventListener("click", () => { state.showAll = !state.showAll; renderTable(); });
+  $("built").textContent = "Data processed " + DATA.built + ".";
+  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { const list = ORGS.filter(inScope); renderTrend(agg(list)); renderBars(); }, 120); });
+  renderAll();
+})();
+</script>

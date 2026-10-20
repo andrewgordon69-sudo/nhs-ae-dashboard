@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>England A&amp;E Waits</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="How quickly A&amp;E departments in England saw patients, April to September 2026, by region, ICB and trust. Built from NHS England's published monthly statistics.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a single scanning column. Filters, then four headline tiles, then the trend and the
+   regional comparison side by side, then the trust table, then notes. Teal marks anything you can operate. */
+:root {
+  --bg: #f3f6f6;
+  --surface: #ffffff;
+  --ink: #10201f;
+  --ink-2: #485857;
+  --muted: #6f7f7d;
+  --grid: #e3e9e8;
+  --axis: #c3cecc;
+  --line: rgba(16, 32, 31, 0.10);
+  --accent: #0b6b66;
+  --accent-wash: rgba(11, 107, 102, 0.09);
+  --s1: #2a78d6;          /* all A&E types */
+  --s2: #eb6834;          /* major (Type 1) departments */
+  --s1-wash: rgba(42, 120, 214, 0.10);
+  --good: #0ca30c;  --good-ink: #006300;
+  --warn: #fab219;  --warn-ink: #7a5300;
+  --crit: #d03b3b;  --crit-ink: #a42323;
+  --tip-bg: #10201f; --tip-ink: #f3f6f6;
+  --font-ui: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1413; --surface: #151f1e; --ink: #edf3f2; --ink-2: #b6c4c2; --muted: #85948f;
+    --grid: #22302e; --axis: #34433f; --line: rgba(255,255,255,0.10);
+    --accent: #4dbab1; --accent-wash: rgba(77,186,177,0.12);
+    --s1: #3987e5; --s2: #d95926; --s1-wash: rgba(57,135,229,0.14);
+    --good-ink: #3cc23c; --warn-ink: #f5bd45; --crit-ink: #f07a7a;
+    --tip-bg: #edf3f2; --tip-ink: #10201f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1413; --surface: #151f1e; --ink: #edf3f2; --ink-2: #b6c4c2; --muted: #85948f;
+  --grid: #22302e; --axis: #34433f; --line: rgba(255,255,255,0.10);
+  --accent: #4dbab1; --accent-wash: rgba(77,186,177,0.12);
+  --s1: #3987e5; --s2: #d95926; --s1-wash: rgba(57,135,229,0.14);
+  --good-ink: #3cc23c; --warn-ink: #f5bd45; --crit-ink: #f07a7a;
+  --tip-bg: #edf3f2; --tip-ink: #10201f;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: var(--font-ui); font-size: 15px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap {
+  max-width: 1180px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 56px;
+  display: grid; gap: 20px;
+}
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+.eyebrow {
+  font-family: var(--font-data); font-size: 11.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted);
+}
+
+/* ---------- header */
+header.top { display: grid; gap: 10px; padding-bottom: 4px; }
+header.top h1 { font-size: clamp(28px, 4.2vw, 42px); font-weight: 800; letter-spacing: -0.02em; line-height: 1.08; }
+.thesis { font-size: clamp(16px, 1.8vw, 19px); color: var(--ink-2); max-width: 62ch; margin: 0; }
+.thesis b { color: var(--ink); font-weight: 700; }
+
+/* ---------- filters */
+.filters {
+  display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: end;
+  padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field label, .field .lbl { font-size: 12px; font-weight: 600; color: var(--ink-2); }
+select {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 8px; padding: 7px 30px 7px 10px; max-width: 100%;
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 15px) 52%, calc(100% - 10px) 52%;
+  background-size: 5px 5px; background-repeat: no-repeat;
+}
+#f-icb { width: 300px; }
+.seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.seg button {
+  font: inherit; font-size: 13.5px; font-weight: 600; border: 0; background: transparent; color: var(--ink-2);
+  padding: 6px 11px; border-radius: 6px; cursor: pointer; white-space: nowrap;
+}
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--accent); box-shadow: 0 0 0 1px var(--line); }
+button:focus-visible, select:focus-visible, input:focus-visible, th button:focus-visible, .bar-hit:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.reset { font: inherit; font-size: 13px; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 8px 4px; cursor: pointer; margin-left: auto; }
+.reset:hover { text-decoration: underline; }
+
+/* ---------- tiles */
+.tiles { display: grid; grid-template-columns: 1.35fr 1fr 1fr 1fr; gap: 12px; }
+.tile {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 16px 18px; display: grid; gap: 6px; align-content: start; min-width: 0;
+}
+.tile .label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.tile .value { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.tile.hero .value { font-size: 52px; }
+.tile .sub { font-size: 13px; color: var(--muted); }
+.delta { font-size: 13px; font-weight: 600; display: inline-flex; gap: 4px; align-items: baseline; }
+.delta.good { color: var(--good-ink); } .delta.bad { color: var(--crit-ink); } .delta.flat { color: var(--ink-2); }
+.delta .vs { font-weight: 400; color: var(--muted); }
+.meter { position: relative; height: 26px; margin-top: 6px; }
+.meter .track { position: absolute; left: 0; right: 0; top: 4px; height: 8px; border-radius: 4px; background: var(--grid); }
+.meter .fill { position: absolute; left: 0; top: 4px; height: 8px; border-radius: 4px; background: var(--s1); }
+.meter .tick { position: absolute; top: 0; width: 2px; height: 16px; background: var(--ink); }
+.meter .tick span { position: absolute; top: 15px; transform: translateX(-50%); font-family: var(--font-data); font-size: 10.5px; color: var(--ink-2); white-space: nowrap; }
+
+/* ---------- panels */
+.row2 { display: grid; grid-template-columns: 1.25fr 1fr; gap: 12px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 12px; min-width: 0; align-content: start; }
+.panel-head { display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; align-items: baseline; }
+.panel h2 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.panel .note { font-size: 13px; color: var(--muted); margin: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-line { width: 16px; height: 2px; border-radius: 1px; display: inline-block; }
+.key-ref { width: 16px; height: 0; border-top: 2px dotted var(--ink-2); display: inline-block; }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: var(--font-data); font-size: 11px; fill: var(--muted); }
+.chart .lab { fill: var(--ink-2); font-family: var(--font-ui); font-size: 12px; font-weight: 600; }
+.chart .lab-strong { fill: var(--ink); font-family: var(--font-ui); font-size: 12.5px; font-weight: 700; }
+.tip {
+  position: absolute; pointer-events: none; z-index: 4; background: var(--tip-bg); color: var(--tip-ink);
+  border-radius: 8px; padding: 9px 11px; font-size: 12.5px; line-height: 1.35; min-width: 168px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18); opacity: 0; transition: opacity .12s;
+}
+.tip.on { opacity: 1; }
+.tip .t-h { font-weight: 700; margin-bottom: 5px; }
+.tip .t-r { display: grid; grid-template-columns: 14px auto 1fr; gap: 6px; align-items: center; }
+.tip .t-r b { font-variant-numeric: tabular-nums; }
+.tip .t-r span:last-child { opacity: 0.8; }
+.tip .t-m { opacity: 0.75; margin-top: 4px; }
+details.figs summary { font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer; width: max-content; }
+.mini-table { overflow-x: auto; }
+.mini-table table { border-collapse: collapse; font-size: 13px; width: 100%; margin-top: 8px; }
+.mini-table th, .mini-table td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mini-table th:first-child, .mini-table td:first-child { text-align: left; }
+.mini-table th { font-weight: 600; color: var(--ink-2); }
+
+/* ---------- region bars */
+.bar-hit { cursor: pointer; }
+.bar-hit:hover .bar { filter: brightness(1.08); }
+
+/* ---------- trust table */
+.tbl-tools { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.search {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 10px; width: 260px; max-width: 100%;
+}
+.count { font-size: 13px; color: var(--muted); }
+.tbl-wrap { overflow-x: auto; margin: 0 -18px; padding: 0 18px; }
+table.trusts { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 14px; }
+table.trusts th { text-align: right; font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 0 10px 8px; border-bottom: 1px solid var(--axis); white-space: nowrap; vertical-align: bottom; }
+table.trusts th:first-child, table.trusts td:first-child { text-align: left; padding-left: 0; min-width: 240px; }
+table.trusts th button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+table.trusts th button:hover { color: var(--accent); }
+table.trusts th .arr { font-size: 10px; color: var(--accent); width: 8px; }
+table.trusts td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; vertical-align: middle; }
+table.trusts tbody tr:hover { background: var(--accent-wash); }
+.tname { font-weight: 600; line-height: 1.3; }
+.tsub { font-size: 12px; color: var(--muted); line-height: 1.3; }
+.flag { font-size: 11.5px; color: var(--ink-2); background: var(--grid); border-radius: 4px; padding: 1px 6px; margin-left: 6px; white-space: nowrap; font-weight: 500; }
+.pct-cell { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.pbar { width: 64px; height: 6px; border-radius: 3px; background: var(--grid); position: relative; overflow: hidden; }
+.pbar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--s1); border-radius: 3px; }
+.pbar.t1 i { background: var(--s2); }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip svg { flex: none; }
+.chip.good { color: var(--good-ink); } .chip.warn { color: var(--warn-ink); } .chip.crit { color: var(--crit-ink); }
+.more { font: inherit; font-size: 13.5px; font-weight: 600; color: var(--accent); background: var(--accent-wash); border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer; justify-self: start; }
+.empty { padding: 18px 0; color: var(--muted); }
+
+/* ---------- notes */
+.notes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.notes .panel p, .notes .panel li { font-size: 13.5px; color: var(--ink-2); margin: 0; }
+.notes .panel ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.notes h3 { font-size: 14.5px; font-weight: 700; }
+.notes a { color: var(--accent); }
+footer { font-size: 12.5px; color: var(--muted); display: grid; gap: 4px; }
+
+@media (max-width: 980px) {
+  .tiles { grid-template-columns: 1fr 1fr; }
+  .row2, .notes { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .tiles { grid-template-columns: 1fr; }
+  .tile.hero .value { font-size: 44px; }
+  .filters { position: static; }
+  #f-icb { width: 100%; }
+  .field { flex: 1 1 100%; }
+  .reset { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">A&amp;E four-hour performance · England · April to September 2026</div>
+    <h1>England A&amp;E Waits</h1>
+    <p class="thesis" id="thesis"></p>
+  </header>
+
+  <section class="filters" aria-label="Filters">
+    <div class="field">
+      <label for="f-region">Region</label>
+      <select id="f-region"></select>
+    </div>
+    <div class="field">
+      <label for="f-icb">Local health system (ICB)</label>
+      <select id="f-icb"></select>
+    </div>
+    <div class="field">
+      <label for="f-month">Month</label>
+      <select id="f-month"></select>
+    </div>
+    <div class="field">
+      <span class="lbl" id="lbl-measure">Measure</span>
+      <div class="seg" role="group" aria-labelledby="lbl-measure">
+        <button type="button" id="m-all" aria-pressed="true">All A&amp;E types</button>
+        <button type="button" id="m-t1" aria-pressed="false">Major A&amp;E (Type 1)</button>
+      </div>
+    </div>
+    <button type="button" class="reset" id="reset">Reset to England</button>
+  </section>
+
+  <section class="tiles" aria-label="Headline figures" id="tiles"></section>
+
+  <section class="row2">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Patients seen within four hours, by month</h2>
+          <p class="note" id="trend-scope"></p>
+        </div>
+        <div class="legend" aria-hidden="true">
+          <span><i class="key-line" style="background:var(--s1)"></i>All A&amp;E types</span>
+          <span><i class="key-line" style="background:var(--s2)"></i>Major A&amp;E (Type 1)</span>
+          <span><i class="key-ref"></i>82% target</span>
+        </div>
+      </div>
+      <div class="chart" id="trend"><div class="tip" id="trend-tip"></div></div>
+      <details class="figs">
+        <summary>Show the figures</summary>
+        <div class="mini-table" id="trend-table"></div>
+      </details>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Regions compared</h2>
+          <p class="note" id="bars-note"></p>
+        </div>
+      </div>
+      <div class="chart" id="bars"><div class="tip" id="bars-tip"></div></div>
+      <p class="note">Select a region to filter the whole page.</p>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="tbl-h">
+    <div class="panel-head">
+      <div>
+        <h2 id="tbl-h">Trusts and providers</h2>
+        <p class="note" id="tbl-note"></p>
+      </div>
+      <div class="tbl-tools">
+        <div class="seg" role="group" aria-label="Which providers to list">
+          <button type="button" id="p-t1" aria-pressed="true">Major A&amp;E trusts</button>
+          <button type="button" id="p-all" aria-pressed="false">All providers</button>
+        </div>
+        <input class="search" id="search" type="search" placeholder="Search by name" aria-label="Search providers by name">
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table class="trusts">
+        <thead><tr id="thead"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="tbl-tools">
+      <button type="button" class="more" id="more"></button>
+      <span class="count" id="count"></span>
+    </div>
+  </section>
+
+  <section class="notes" aria-label="About the data">
+    <div class="panel">
+      <h3>What the measures mean</h3>
+      <ul>
+        <li><strong>Within four hours</strong>: the share of A&amp;E attendances where the patient was admitted, transferred or discharged within four hours of arriving.</li>
+        <li><strong>Major A&amp;E (Type 1)</strong>: consultant-led, 24-hour emergency departments with full resuscitation facilities. All types also includes urgent treatment centres, walk-in centres and minor injury units.</li>
+        <li><strong>12-hour waits</strong>: patients who waited more than 12 hours between the decision to admit them and actually getting a bed.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Targets</h3>
+      <ul>
+        <li>The NHS Constitution standard is <strong>95%</strong> within four hours. England last met it in 2015.</li>
+        <li>For 2026-27, trusts are asked to reach <strong>82%</strong> across all A&amp;E types. The longer-term aim is 85% by 2028-29.</li>
+        <li>Status labels in the table compare each provider's all-types figure with the 82% target.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Changes to watch</h3>
+      <ul>
+        <li><strong>Bristol merger.</strong> North Bristol NHS Trust stops reporting after June 2026. From July its activity is included in Bristol NHS Foundation Trust, which explains that trust's jump in attendances.</li>
+        <li>Two Leicestershire urgent care sites report from May 2026 only.</li>
+        <li>Ashford Walk-In-Centre is missing from NHS England's ICB mapping file, so it appears under its region only.</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    <div>Source: NHS England, <a style="color:var(--accent)" href="https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/ae-attendances-and-emergency-admissions-2026-27/" target="_blank" rel="noopener">A&amp;E Attendances and Emergency Admissions 2026-27</a>, monthly provider-level data, April to September 2026, with the April 2026 ICB mapping file. Provider rows reconcile exactly to NHS England's published totals for every month.</div>
+    <div>An independent analysis of published official statistics. This is not an NHS publication. <span id="built"></span></div>
+  </footer>
+</div>
+
+<script>
+const DATA = {"months":["2026-04-01","2026-05-01","2026-06-01","2026-07-01","2026-08-01","2026-09-01"],"orgs":[{"c":"AAH","n":"Tetbury Hospital Trust Ltd","t1":false,"r":"South West","i":"NHS Gloucestershire Integrated Care Board","a":[554,610,744,791,603,702],"w":[554,610,744,791,603,702],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"ACH01","n":"Whitstable Medical Practice","t1":false,"r":"South East","i":"NHS Kent and Medway Integrated Care Board","a":[4800,5139,4999,5197,4942,5085],"w":[4800,5139,4999,5197,4942,5085],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"AD913","n":"Beckenham Beacon UCC","t1":false,"r":"London","i":"NHS South East London Integrated Care Board","a":[3756,4103,3765,3880,3657,3736],"w":[3720,4096,3756,3829,3628,3722],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"AJN","n":"Workington Health Limited","t1":false,"r":"North East and Yorkshire","i":"NHS North East and North Cumbria Integrated Care Board","a":[449,429,476,537,461,492],"w":[449,429,476,537,461,492],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"AQM01","n":"Faversham Medical Practice MIU","t1":false,"r":"South East","i":"NHS Kent and Medway Integrated Care Board","a":[2989,3044,2781,3086,2906,2784],"w":[2989,3044,2781,3086,2906,2784],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"AQN04","n":"PHL Lymington UTC","t1":false,"r":"South East","i":"NHS Hampshire and Isle of Wight Integrated Care Board","a":[3266,3567,3406,3705,3448,3185],"w":[3225,3485,3325,3447,3261,2921],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"ARN03","n":"Local Care Direct","t1":false,"r":"North East and Yorkshire","i":"NHS West Yorkshire Integrated Care Board","a":[2458,2433,2508,2513,2428,2517],"w":[2449,2424,2499,2513,2428,2508],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"C82009","n":"Market Harborough Med. Ctr","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[278,264,307,404,307,323],"w":[278,264,307,404,307,323],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"C82038","n":"Latham House Medical Practice","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[368,268,441,437,388,384],"w":[368,268,441,437,388,384],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"C83023","n":"Sleaford Medical Group","t1":false,"r":"Midlands","i":"NHS Lincolnshire Integrated Care Board","a":[529,544,448,468,539,462],"w":[529,544,448,468,539,462],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[1,3,4,10,5,1]},{"c":"DJV01","n":"Herne Bay Health Care Ltd","t1":false,"r":"South East","i":"NHS Kent and Medway Integrated Care Board","a":[2582,2738,2696,2737,2791,2779],"w":[2582,2738,2696,2737,2791,2779],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"DT301","n":"Herts Urgent Care (Ascots Lane)","t1":false,"r":"East of England","i":"NHS Central East Integrated Care Board","a":[2159,2194,2286,2249,2128,2328],"w":[2046,2012,2089,2140,2056,2208],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"G0Q0L","n":"Barking Hospital UTC","t1":false,"r":"London","i":"NHS North East London Integrated Care Board","a":[2921,2972,3016,2768,2532,2883],"w":[2900,2948,2989,2719,2525,2851],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"G3P9C","n":"Trowbridge Minor Injuries Unit","t1":false,"r":"South West","i":"NHS Bath and North East Somerset, Swindon and Wiltshire Integrated Care Board","a":[1248,1318,1560,1789,1507,1624],"w":[1237,1314,1533,1770,1505,1604],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"K6K0R","n":"Harold Wood Polyclinic UTC","t1":false,"r":"London","i":"NHS North East London Integrated Care Board","a":[2885,2922,2839,2804,2620,2752],"w":[2869,2908,2821,2754,2604,2727],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"L83087","n":"Okehampton Medical Centre","t1":false,"r":"South West","i":"NHS Devon Integrated Care Board","a":[64,79,92,109,63,67],"w":[64,79,92,109,63,67],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NDJ","n":"First Community Health and Care CIC","t1":false,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[2364,2500,2562,2637,2320,2453],"w":[2359,2475,2502,2564,2286,2383],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NLX","n":"Sirona Care & Health","t1":false,"r":"South West","i":"NHS Bristol, North Somerset and South Gloucestershire Integrated Care Board","a":[8774,9525,9924,10574,9354,9915],"w":[8379,9161,9459,10018,9021,9360],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNF09","n":"Bransholme Health Centre","t1":false,"r":"North East and Yorkshire","i":"NHS Humber and North Yorkshire Integrated Care Board","a":[3505,3857,3749,3689,3486,3624],"w":[3217,3403,3158,3093,3199,3142],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNF16","n":"Bridlington Hospital","t1":false,"r":"North East and Yorkshire","i":"NHS Humber and North Yorkshire Integrated Care Board","a":[1546,1613,1781,1756,1707,1478],"w":[1507,1581,1715,1642,1641,1396],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNF94","n":"East Riding Community Hospital","t1":false,"r":"North East and Yorkshire","i":"NHS Humber and North Yorkshire Integrated Care Board","a":[3114,3011,2741,3279,2895,2956],"w":[2976,2747,2524,3055,2662,2760],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNFA7","n":"Goole & District Hospital","t1":false,"r":"North East and Yorkshire","i":"NHS Humber and North Yorkshire Integrated Care Board","a":[1649,1752,1860,1799,1671,1652],"w":[1608,1719,1797,1786,1654,1610],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNJ","n":"DHU Health Care C.I.C","t1":false,"r":"Midlands","i":"NHS Derby and Derbyshire Integrated Care Board","a":[1909,2250,1934,1936,2036,1908],"w":[1895,2250,1933,1935,2036,1907],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNJ07","n":"Loughborough Urgent Care Centre","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[7652,8292,7705,7361,7576,7847],"w":[7631,8235,7675,7321,7554,7795],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNJ0H","n":"LLR EA - The Merlyn Vaz Health & Social Care Centre","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[2709,3047,2596,2545,2689,2676],"w":[2700,3035,2589,2540,2686,2676],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNJ10","n":"Enderby Leisure Centre","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[null,375,324,317,371,317],"w":[null,375,324,317,371,317],"a1":[null,0,0,0,0,0],"w1":[null,0,0,0,0,0],"x12":[null,0,0,0,0,0],"ea":[null,0,0,0,0,0]},{"c":"NNJ11","n":"Lutterworth Hospital","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[null,162,107,134,169,139],"w":[null,162,107,134,169,139],"a1":[null,0,0,0,0,0],"w1":[null,0,0,0,0,0],"x12":[null,0,0,0,0,0],"ea":[null,0,0,0,0,0]},{"c":"NNJ12","n":"Market Harborough","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[266,308,260,263,324,298],"w":[266,308,260,263,324,298],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNJ13","n":"Melton Mowbray","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[275,369,372,371,406,408],"w":[275,369,372,371,406,408],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNJ14","n":"Oadby","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[3032,2712,2953,3988,4012,3835],"w":[3016,2712,2946,3985,4011,3834],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NNJ15","n":"Rutland Minor Illness and Injury Service (Formerly Wlhh Pre-April 2026)","t1":false,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[624,624,624,635,640,623],"w":[623,624,623,634,640,623],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NQT1I","n":"Chippenham Community Hospital","t1":false,"r":"South West","i":"NHS Bath and North East Somerset, Swindon and Wiltshire Integrated Care Board","a":[1729,1853,1910,1932,1817,1811],"w":[1683,1781,1853,1854,1800,1782],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NQT5F","n":"Skelmersdale Walk In Centre","t1":false,"r":"North West","i":"NHS Lancashire and South Cumbria Integrated Care Board","a":[1629,1709,1547,1661,1557,1633],"w":[1616,1696,1543,1642,1540,1620],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NQT5H","n":"Paulton Memorial Hospital","t1":false,"r":"South West","i":"NHS Bath and North East Somerset, Swindon and Wiltshire Integrated Care Board","a":[1049,1236,1043,1528,1305,1382],"w":[1042,1235,1038,1524,1304,1378],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NTP11","n":"Practice Plus Group Hospital - Southampton","t1":false,"r":"South East","i":"NHS Hampshire and Isle of Wight Integrated Care Board","a":[5328,5698,5634,5636,5365,5701],"w":[5195,5561,5459,5480,5225,5519],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NTPAD","n":"Practice Plus Group Surgical Centre - St Marys Portsmouth","t1":false,"r":"South East","i":"NHS Hampshire and Isle of Wight Integrated Care Board","a":[5416,5870,5686,5665,5256,5733],"w":[5252,5746,5532,5465,5137,5589],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NTV0B","n":"Ashford Walk-In-Centre","t1":false,"r":"South East","i":"Not in April 2026 mapping file","a":[2357,2552,2472,2527,2517,2584],"w":[2322,2485,2349,2482,2426,2311],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NTV0W","n":"Woking Walk In Centre","t1":false,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[2787,2834,2680,2888,2828,2773],"w":[2729,2664,2549,2797,2735,2689],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NV693","n":"Rossendale MIU & OOH","t1":false,"r":"North West","i":"NHS Lancashire and South Cumbria Integrated Care Board","a":[957,1057,1137,1223,1044,1040],"w":[957,1057,1135,1221,1044,1036],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"NVE43","n":"Hastings GP Led Health Centre","t1":false,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[1170,1129,1321,1224,1235,901],"w":[1170,1129,1321,1224,1235,901],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"R0A","n":"Manchester University NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Greater Manchester Integrated Care Board","a":[45377,47288,48305,47652,43978,47506],"w":[34917,35170,35225,36132,32736,34046],"a1":[29832,31000,31405,30752,28152,31246],"w1":[19795,19353,18814,19695,17452,18513],"x12":[97,91,103,86,91,81],"ea":[6364,6547,6493,6561,6386,6226]},{"c":"R0B","n":"South Tyneside and Sunderland NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS North East and North Cumbria Integrated Care Board","a":[20061,21265,22555,22337,21130,21549],"w":[15649,16599,17201,17218,16668,16100],"a1":[11601,12186,12949,12904,12120,12593],"w1":[7363,7858,7835,8091,7858,7475],"x12":[1,0,1,0,0,2],"ea":[5835,6119,6155,6293,5874,6293]},{"c":"R0D","n":"University Hospitals Dorset NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Dorset Integrated Care Board","a":[20142,20918,20420,20999,20748,20484],"w":[13794,14690,14331,15168,14717,14717],"a1":[15796,15936,15936,16317,16251,16401],"w1":[9448,9708,9847,10486,10220,10634],"x12":[573,410,399,373,135,342],"ea":[6592,6613,6834,7071,6717,6758]},{"c":"R1D","n":"Shropshire Community Health NHS Trust","t1":false,"r":"Midlands","i":"NHS Shropshire, Telford and Wrekin Integrated Care Board","a":[3363,3573,3940,4125,3409,3616],"w":[3342,3568,3842,4056,3383,3601],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"R1F","n":"Isle of Wight NHS Trust","t1":true,"r":"South East","i":"NHS Hampshire and Isle of Wight Integrated Care Board","a":[6197,6364,6216,6738,6743,6413],"w":[4650,4871,4742,5260,5330,5138],"a1":[4419,4444,4270,4593,4660,4442],"w1":[2929,3013,2854,3145,3277,3195],"x12":[290,168,251,121,118,110],"ea":[1480,1541,1492,1586,1559,1535]},{"c":"R1H","n":"Barts Health NHS Trust","t1":true,"r":"London","i":"NHS North East London Integrated Care Board","a":[45067,47268,46420,47580,43986,46850],"w":[34132,35125,34034,35017,32156,34672],"a1":[25673,26667,26847,27454,25241,27253],"w1":[16190,16203,16309,17066,15328,16611],"x12":[1161,1157,1112,1169,1189,1208],"ea":[5449,5575,5516,5497,5116,5223]},{"c":"R1K","n":"London North West University Healthcare NHS Trust","t1":true,"r":"London","i":"NHS West and North London Integrated Care Board","a":[29865,31775,30820,31049,29098,31166],"w":[24217,24559,24077,23876,22254,23505],"a1":[13564,14429,14313,14527,13874,15095],"w1":[8031,7522,7861,7598,7208,7689],"x12":[525,553,473,413,585,657],"ea":[6799,6925,6602,6647,6204,6292]},{"c":"RA2","n":"Royal Surrey NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[9781,10431,10260,10617,9854,10455],"w":[7234,7701,7705,8341,7299,7654],"a1":[7523,8042,7724,7898,7449,7978],"w1":[4976,5312,5170,5622,4894,5178],"x12":[6,24,13,0,18,24],"ea":[3341,3594,3501,3314,2974,3128]},{"c":"RA7","n":"Bristol NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Bristol, North Somerset and South Gloucestershire Integrated Care Board","a":[18233,19091,18751,29125,27210,28667],"w":[12903,13463,13125,19865,19566,19973],"a1":[15738,16484,16168,26582,24619,26019],"w1":[10686,11065,10697,17527,17218,17631],"x12":[371,286,498,682,481,620],"ea":[6317,6536,6419,12563,11680,12707]},{"c":"RA9","n":"Torbay and South Devon NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Devon Integrated Care Board","a":[10064,11147,11279,11498,11198,11123],"w":[6466,7217,7362,7352,7096,7950],"a1":[6582,7154,7215,7348,7404,7380],"w1":[3009,3316,3489,3628,3602,4397],"x12":[96,138,140,164,166,167],"ea":[2225,2100,2000,2195,2062,2132]},{"c":"RAE","n":"Bradford Teaching Hospitals NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS West Yorkshire Integrated Care Board","a":[13895,14272,14458,14269,13112,13946],"w":[11570,11766,11778,11560,10853,11455],"a1":[9265,9325,9476,9350,8727,9332],"w1":[6940,6824,6798,6648,6471,6849],"x12":[124,147,195,143,144,215],"ea":[3781,3923,3811,3933,3569,3800]},{"c":"RAJ","n":"Mid and South Essex NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Essex Integrated Care Board","a":[35755,35946,36173,37096,35276,37143],"w":[26614,26554,26411,26170,24773,25854],"a1":[27547,27885,28161,28885,27209,28628],"w1":[18550,18634,18662,18116,16899,17700],"x12":[879,867,1086,1203,1371,1371],"ea":[10008,10219,10254,10660,10011,10543]},{"c":"RAL","n":"Royal Free London NHS Foundation Trust","t1":true,"r":"London","i":"NHS West and North London Integrated Care Board","a":[43400,45195,44998,44701,41470,45096],"w":[35597,36295,36151,35917,33327,36121],"a1":[28104,26795,27050,26761,25643,27627],"w1":[20822,18755,19045,18817,17980,19407],"x12":[1795,1862,1778,1996,1946,2031],"ea":[7261,7389,7174,7077,7606,7479]},{"c":"RAN","n":"Royal National Orthopaedic Hospital NHS Trust","t1":false,"r":"London","i":"NHS West and North London Integrated Care Board","a":[0,0,0,0,0,0],"w":[0,0,0,0,0,0],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[23,8,16,29,30,28]},{"c":"RAS","n":"The Hillingdon Hospitals NHS Foundation Trust","t1":true,"r":"London","i":"NHS West and North London Integrated Care Board","a":[11857,13034,12745,12794,12125,12624],"w":[9647,10480,10206,10383,9880,10333],"a1":[5234,5812,5581,5639,5562,5219],"w1":[3065,3321,3100,3332,3323,3001],"x12":[14,9,48,27,15,6],"ea":[1886,1899,1838,1868,1799,1914]},{"c":"RAT","n":"North East London NHS Foundation Trust","t1":false,"r":"London","i":"NHS North East London Integrated Care Board","a":[1851,1740,1696,1751,1408,1626],"w":[1816,1711,1643,1693,1329,1598],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RAX","n":"Kingston and Richmond NHS Foundation Trust","t1":true,"r":"London","i":"NHS South West London Integrated Care Board","a":[15187,15876,15870,15870,15195,16141],"w":[12010,12108,11658,11714,11139,11196],"a1":[7049,7296,7299,7230,6977,7544],"w1":[4064,3725,3343,3402,3272,3132],"x12":[383,320,563,381,462,516],"ea":[3921,3902,3619,3580,3323,3394]},{"c":"RBD","n":"Dorset County Hospital NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Dorset Integrated Care Board","a":[9523,10203,10053,10575,10503,9691],"w":[7490,7591,7530,8382,8079,7615],"a1":[5195,5489,5409,5592,5545,5255],"w1":[3163,2877,2896,3402,3144,3185],"x12":[43,85,61,45,21,70],"ea":[2507,2458,2436,2750,2554,2675]},{"c":"RBK","n":"Walsall Healthcare NHS Trust","t1":true,"r":"Midlands","i":"NHS Black Country Integrated Care Board","a":[14149,14613,14543,14824,14087,14832],"w":[11979,11709,12109,11872,10968,11168],"a1":[9804,9873,10015,10476,9626,10508],"w1":[7716,7179,7724,7553,6629,7019],"x12":[96,188,94,215,162,339],"ea":[5239,5207,5315,5250,5080,5375]},{"c":"RBL","n":"Wirral University Teaching Hospital NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[11457,11204,11300,11625,10134,10669],"w":[7166,6874,6938,6939,5332,5701],"a1":[8376,8227,8388,8631,7611,8046],"w1":[4183,3956,4070,3971,3315,3494],"x12":[735,858,705,575,446,498],"ea":[4004,3909,4074,4166,3984,4023]},{"c":"RBN","n":"Mersey and West Lancashire Teaching Hospitals NHS Trust","t1":true,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[24859,25748,25424,25860,24716,25375],"w":[18337,18793,18448,18926,18204,18607],"a1":[17604,18185,18034,18175,17290,18040],"w1":[11164,11314,11188,11287,10828,11330],"x12":[471,493,403,503,436,439],"ea":[8620,9003,9029,9447,8940,9228]},{"c":"RBQ","n":"Liverpool Heart and Chest Hospital NHS Foundation Trust","t1":false,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[0,0,0,0,0,0],"w":[0,0,0,0,0,0],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[114,137,123,91,105,112]},{"c":"RBS","n":"Alder Hey Children's NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[6060,6425,6141,5798,4626,6240],"w":[5286,5377,5044,5145,4134,5359],"a1":[6060,6425,6141,5798,4626,6240],"w1":[5286,5377,5044,5145,4134,5359],"x12":[0,0,0,0,0,0],"ea":[1101,1174,1087,1130,924,1191]},{"c":"RBT","n":"Mid Cheshire Hospitals NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[10113,10650,10982,10967,10316,10672],"w":[6730,6673,7032,7260,6927,6954],"a1":[7156,7409,7190,7393,7136,7353],"w1":[3781,3450,3323,3716,3773,3657],"x12":[587,539,743,513,612,607],"ea":[3195,3249,3246,3255,3283,3417]},{"c":"RBV","n":"The Christie NHS Foundation Trust","t1":false,"r":"North West","i":"NHS Greater Manchester Integrated Care Board","a":[0,0,0,0,0,0],"w":[0,0,0,0,0,0],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[844,840,816,873,816,891]},{"c":"RC9","n":"Bedfordshire Hospitals NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Central East Integrated Care Board","a":[26448,27504,27002,27290,25678,27176],"w":[20497,20906,20058,20314,18414,20233],"a1":[17379,18436,18544,19124,17973,18509],"w1":[11428,11838,11600,12148,10709,11566],"x12":[23,43,70,32,13,85],"ea":[7389,7389,7729,7822,7048,7634]},{"c":"RCB","n":"York and Scarborough Teaching Hospitals NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS Humber and North Yorkshire Integrated Care Board","a":[18705,19384,19124,19896,18761,18329],"w":[14034,12943,12464,12439,11803,11328],"a1":[11456,12406,12858,13730,12933,12536],"w1":[7122,6331,6790,6892,6411,6049],"x12":[77,293,288,177,116,315],"ea":[6803,5379,4321,4414,4060,4117]},{"c":"RCD","n":"Harrogate and District NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS Humber and North Yorkshire Integrated Care Board","a":[6976,7091,7538,7534,7130,7119],"w":[5446,5007,5397,5472,5380,5134],"a1":[5426,5373,5781,5681,5549,5599],"w1":[3896,3301,3641,3619,3799,3626],"x12":[6,14,11,7,0,1],"ea":[1498,1536,1468,1341,1255,1406]},{"c":"RCF","n":"Airedale NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS West Yorkshire Integrated Care Board","a":[6447,6948,7128,7169,6738,6827],"w":[4110,4087,4206,4241,4005,4223],"a1":[6244,6776,6877,6943,6520,6549],"w1":[3907,3915,3955,4015,3787,3945],"x12":[348,287,203,183,264,181],"ea":[1854,1870,2064,2051,1823,1998]},{"c":"RCU","n":"Sheffield Children's NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS South Yorkshire Integrated Care Board","a":[5074,5256,5411,5114,3874,5007],"w":[4809,4963,4944,4696,3576,4521],"a1":[4868,4960,5101,4860,3874,4643],"w1":[4603,4667,4634,4442,3576,4160],"x12":[0,0,0,0,0,0],"ea":[1048,1054,1086,999,786,1094]},{"c":"RCX","n":"The Queen Elizabeth Hospital, King's Lynn, NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Norfolk and Suffolk Integrated Care Board","a":[8692,8582,7904,8207,7995,7933],"w":[5787,5513,4849,5302,5055,5141],"a1":[6998,7164,6692,7008,6721,6636],"w1":[4093,4095,3637,4103,3781,3844],"x12":[176,174,149,92,151,154],"ea":[2089,2250,2259,2463,2183,2146]},{"c":"RD1","n":"Royal United Hospitals Bath NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Bath and North East Somerset, Swindon and Wiltshire Integrated Care Board","a":[8971,9451,9040,9191,8912,9425],"w":[5473,5345,5221,5161,4989,5346],"a1":[8971,9451,9040,9191,8912,9425],"w1":[5473,5345,5221,5161,4989,5346],"x12":[58,153,135,249,114,176],"ea":[4887,4632,4760,4953,4769,4907]},{"c":"RD8","n":"Milton Keynes University Hospital NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Central East Integrated Care Board","a":[14686,14961,14711,15046,13914,16209],"w":[10376,10645,10171,10096,9180,11381],"a1":[9126,9332,9445,9629,8818,9420],"w1":[4909,5097,4997,4746,4158,4770],"x12":[0,0,0,0,0,2],"ea":[2679,2712,2904,3098,2977,3048]},{"c":"RDE","n":"East Suffolk and North Essex NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Norfolk and Suffolk Integrated Care Board","a":[25042,26039,25535,26297,25283,25734],"w":[19414,20273,19662,20023,19541,19488],"a1":[11310,11914,11828,12642,12281,12846],"w1":[6670,7187,6892,7340,7181,7552],"x12":[413,511,615,448,675,858],"ea":[5301,5350,5330,5461,5230,5237]},{"c":"RDR","n":"Sussex Community NHS Foundation Trust","t1":false,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[12265,12486,12817,13385,12195,13126],"w":[11918,12159,12416,12976,11963,12637],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RDU","n":"Frimley Health NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Thames Valley Integrated Care Board","a":[34064,36967,35159,37096,32474,35909],"w":[26027,27768,26147,27470,23342,27028],"a1":[22326,24282,22940,24005,21615,23398],"w1":[14398,15200,14199,14568,12577,14648],"x12":[732,756,611,538,460,599],"ea":[6153,6764,6554,6776,6382,6861]},{"c":"RDY","n":"Dorset Healthcare University NHS Foundation Trust","t1":false,"r":"South West","i":"NHS Dorset Integrated Care Board","a":[0,0,0,0,0,0],"w":[0,0,0,0,0,0],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,6,3,4,0,2]},{"c":"REF","n":"Royal Cornwall Hospitals NHS Trust","t1":true,"r":"South West","i":"NHS Cornwall and The Isles of Scilly Integrated Care Board","a":[19038,21023,21080,23243,22446,19689],"w":[14985,15913,15767,17427,16925,14859],"a1":[6750,7291,7365,8176,8238,7435],"w1":[3253,3092,3040,3543,3816,3507],"x12":[581,653,620,573,571,497],"ea":[3885,4028,4053,4216,4084,3928]},{"c":"REM","n":"Liverpool University Hospitals NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[27307,28117,27078,28404,28983,28153],"w":[19022,19502,18321,19313,20492,18765],"a1":[16997,17413,16947,17747,17088,17475],"w1":[8926,9103,8515,8963,8754,8384],"x12":[1279,1273,1229,1057,1027,1125],"ea":[7590,7416,7429,7658,7321,7355]},{"c":"REP","n":"Liverpool Women's NHS Foundation Trust","t1":false,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[1493,1559,1462,1584,1506,1654],"w":[1223,1419,1303,1453,1381,1466],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[131,122,124,137,148,138]},{"c":"RET","n":"The Walton Centre NHS Foundation Trust","t1":false,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[0,0,0,0,0,0],"w":[0,0,0,0,0,0],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[179,176,181,204,188,200]},{"c":"RF4","n":"Barking, Havering and Redbridge University Hospitals NHS Trust","t1":true,"r":"London","i":"NHS North East London Integrated Care Board","a":[30808,32334,32019,32315,29984,32810],"w":[24793,26133,25692,26276,24554,26803],"a1":[13442,14107,13771,14061,13214,14321],"w1":[8041,8322,7924,8568,8225,9013],"x12":[546,617,659,572,629,568],"ea":[5874,5975,6097,6318,6196,6119]},{"c":"RFF","n":"Barnsley Hospital NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS South Yorkshire Integrated Care Board","a":[9392,9749,10151,10287,9448,10098],"w":[7561,7481,7692,7635,7457,7197],"a1":[9392,9749,10151,10287,9448,10098],"w1":[7561,7481,7692,7635,7457,7197],"x12":[26,27,20,14,9,109],"ea":[3763,3807,4002,3934,3779,3949]},{"c":"RFR","n":"The Rotherham NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS South Yorkshire Integrated Care Board","a":[9703,9881,10194,10280,9473,10045],"w":[7027,6996,6890,7189,6797,6949],"a1":[9703,9881,10194,10280,9473,10045],"w1":[7027,6996,6890,7189,6797,6949],"x12":[4,1,3,14,2,17],"ea":[2618,2518,2615,2605,2489,2513]},{"c":"RFS","n":"Chesterfield Royal Hospital NHS Foundation Trust","t1":true,"r":"Midlands","i":"NHS Derby and Derbyshire Integrated Care Board","a":[13251,12533,12485,13024,12277,12110],"w":[9879,9000,8781,9071,8906,8692],"a1":[7733,6804,7043,7163,6580,6890],"w1":[4415,3323,3406,3291,3242,3540],"x12":[136,200,196,208,214,180],"ea":[2240,2359,2277,2253,2189,2178]},{"c":"RGN","n":"North West Anglia NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Central East Integrated Care Board","a":[20751,21419,21260,21761,20709,21872],"w":[15256,14886,15365,14565,14128,14603],"a1":[15369,16079,15797,18104,17046,17985],"w1":[9959,9735,10034,11045,10638,10986],"x12":[782,848,762,772,663,705],"ea":[5115,5297,5443,5520,5263,5542]},{"c":"RGP","n":"James Paget University Hospitals NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Norfolk and Suffolk Integrated Care Board","a":[9427,9874,9484,10077,9758,9456],"w":[6864,7061,6913,6980,6615,6237],"a1":[7901,8220,7715,8280,8159,7874],"w1":[5338,5407,5144,5183,5016,4655],"x12":[276,281,311,423,373,423],"ea":[2036,2216,2039,2148,2130,2153]},{"c":"RGR","n":"West Suffolk NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Norfolk and Suffolk Integrated Care Board","a":[9131,9343,9283,9620,9101,9264],"w":[6842,6995,6911,6675,6915,7573],"a1":[8169,8328,8293,8640,8107,8324],"w1":[5880,5980,5921,5695,5921,6633],"x12":[423,325,348,397,327,149],"ea":[1969,2103,2054,2199,2056,2218]},{"c":"RGT","n":"Cambridge University Hospitals NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Central East Integrated Care Board","a":[17231,17932,18457,18169,16855,17947],"w":[11817,12141,12527,12454,11761,12290],"a1":[11540,12024,12321,11959,11453,12085],"w1":[6367,6426,6580,6441,6429,6528],"x12":[446,518,445,352,396,262],"ea":[3098,3247,3297,3335,3156,3464]},{"c":"RH5","n":"Somerset NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Somerset Integrated Care Board","a":[21722,22864,22010,23161,21707,21855],"w":[16088,16171,15550,16447,15855,15676],"a1":[11684,12516,12096,12897,12496,12302],"w1":[6322,6080,5988,6792,6877,6447],"x12":[96,77,109,40,32,86],"ea":[4657,5000,4863,5009,4832,4930]},{"c":"RH8","n":"Royal Devon University Healthcare NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Devon Integrated Care Board","a":[18248,19816,19560,20601,20397,19808],"w":[12231,13567,12648,13382,13055,12450],"a1":[14009,14848,14773,15475,15321,14759],"w1":[8003,8609,7866,8264,7995,7415],"x12":[256,278,256,222,200,213],"ea":[5025,4969,5142,5110,5035,5127]},{"c":"RHM","n":"University Hospital Southampton NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Hampshire and Isle of Wight Integrated Care Board","a":[12740,13249,12651,13112,12802,13544],"w":[8991,9122,8540,9186,8916,9578],"a1":[11547,12221,11607,11858,11558,12362],"w1":[7805,8123,7498,7940,7689,8411],"x12":[11,16,22,18,0,14],"ea":[5572,5523,5510,5607,5332,5435]},{"c":"RHQ","n":"Sheffield Teaching Hospitals NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS South Yorkshire Integrated Care Board","a":[18496,19381,18883,19602,18515,18850],"w":[13726,13939,14034,14145,13052,13549],"a1":[9410,9591,9491,9796,9312,9334],"w1":[5084,4525,5094,4792,4351,4463],"x12":[7,7,18,2,9,8],"ea":[6558,6670,6688,6777,6319,6285]},{"c":"RHU","n":"Portsmouth Hospitals University NHS Trust","t1":true,"r":"South East","i":"NHS Hampshire and Isle of Wight Integrated Care Board","a":[17746,18672,18983,19440,17979,19291],"w":[13424,13819,13625,14277,12821,13759],"a1":[12545,13267,13485,13515,12872,13784],"w1":[8238,8467,8166,8395,7765,8297],"x12":[1038,1211,1112,1191,965,1202],"ea":[5471,5693,5776,5850,5681,5814]},{"c":"RHW","n":"Royal Berkshire NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Thames Valley Integrated Care Board","a":[18247,19346,18963,19208,18118,19289],"w":[13957,14591,14429,14970,13655,14384],"a1":[12536,13319,12788,12733,12113,12872],"w1":[8287,8626,8354,8597,7785,8100],"x12":[16,17,47,17,0,0],"ea":[2665,2848,2612,2667,2616,2595]},{"c":"RJ1","n":"Guy's and St Thomas' NHS Foundation Trust","t1":true,"r":"London","i":"NHS South East London Integrated Care Board","a":[17434,18288,17679,18724,17647,18283],"w":[13460,13978,13223,14302,13259,13793],"a1":[10427,10870,10541,10902,10514,11004],"w1":[6640,6731,6253,6708,6292,6731],"x12":[61,83,80,95,80,73],"ea":[2309,2314,2385,2396,2385,2418]},{"c":"RJ2","n":"Lewisham and Greenwich NHS Trust","t1":true,"r":"London","i":"NHS South East London Integrated Care Board","a":[33808,36102,35356,35150,33831,33723],"w":[26064,27399,26754,25575,25174,23981],"a1":[15928,17205,16456,16455,15343,16492],"w1":[8455,8777,8286,7348,7089,7265],"x12":[466,533,582,769,557,713],"ea":[4467,4884,5349,5122,5112,5219]},{"c":"RJ6","n":"Croydon Health Services NHS Trust","t1":true,"r":"London","i":"NHS South West London Integrated Care Board","a":[18207,18656,18300,18433,17637,18461],"w":[13641,13541,13036,12996,12897,13367],"a1":[13177,13509,13584,13618,12853,13804],"w1":[8611,8394,8320,8181,8113,8710],"x12":[709,676,601,644,594,626],"ea":[1147,1196,1174,1223,1246,1240]},{"c":"RJ7","n":"St George's University Hospitals NHS Foundation Trust","t1":true,"r":"London","i":"NHS South West London Integrated Care Board","a":[13176,13585,13529,13876,13355,14107],"w":[10675,10874,10176,11008,10910,11034],"a1":[9077,9592,9515,9713,9469,10006],"w1":[6689,7035,6433,7010,7094,7127],"x12":[467,575,418,341,399,287],"ea":[2510,2643,2455,2456,2595,2383]},{"c":"RJ8","n":"Cornwall Partnership NHS Foundation Trust","t1":false,"r":"South West","i":"NHS Cornwall and The Isles of Scilly Integrated Care Board","a":[0,0,0,0,0,0],"w":[0,0,0,0,0,0],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[73,80,78,80,80,77]},{"c":"RJC","n":"South Warwickshire University NHS Foundation Trust","t1":true,"r":"Midlands","i":"NHS Coventry and Warwickshire Integrated Care Board","a":[8964,9287,9288,9217,8960,9053],"w":[6987,6809,7173,6944,6488,6281],"a1":[8523,8876,8845,8707,8512,8510],"w1":[6546,6398,6730,6434,6040,5738],"x12":[35,127,88,51,121,190],"ea":[2456,2309,2400,2394,2374,2210]},{"c":"RJE","n":"University Hospitals of North Midlands NHS Trust","t1":true,"r":"Midlands","i":"NHS Staffordshire and Stoke-On-Trent Integrated Care Board","a":[25099,26051,25979,26309,24964,26032],"w":[17115,17688,17532,17912,16668,17191],"a1":[15741,16310,16447,16449,15857,15769],"w1":[7867,8088,8118,8183,7642,7131],"x12":[835,821,909,727,675,640],"ea":[5816,5817,5931,6111,5900,5891]},{"c":"RJL","n":"Northern Lincolnshire and Goole NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS Humber and North Yorkshire Integrated Care Board","a":[17142,17924,18123,18583,16680,17430],"w":[12069,12382,12535,12933,11397,12077],"a1":[10268,10806,10862,11147,10381,10716],"w1":[5254,5338,5429,5595,5174,5443],"x12":[762,787,729,890,798,757],"ea":[5473,5977,5856,6111,5633,5814]},{"c":"RJN","n":"East Cheshire NHS Trust","t1":true,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[4551,4877,4826,4860,4568,4811],"w":[2410,2406,2491,2612,2479,2398],"a1":[4479,4814,4739,4764,4483,4753],"w1":[2338,2343,2404,2516,2394,2340],"x12":[317,328,389,306,397,490],"ea":[1017,1057,998,1200,1052,1126]},{"c":"RJR","n":"Countess of Chester Hospital NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[7849,8306,8498,8847,8463,8676],"w":[5089,5425,5545,5413,5156,5366],"a1":[5408,5637,5734,6079,5941,5968],"w1":[2874,2979,3081,3107,2956,3004],"x12":[726,569,671,612,628,768],"ea":[2940,2999,3089,3291,2990,3162]},{"c":"RJZ","n":"King's College Hospital NHS Foundation Trust","t1":true,"r":"London","i":"NHS South East London Integrated Care Board","a":[25377,26849,26776,27523,25394,27380],"w":[18751,19168,19188,19326,18235,18936],"a1":[15209,15782,15687,16136,15083,16246],"w1":[9037,8737,8752,8593,8347,8415],"x12":[617,867,702,889,460,692],"ea":[3912,3809,3885,3893,3930,3883]},{"c":"RK5","n":"Sherwood Forest Hospitals NHS Foundation Trust","t1":true,"r":"Midlands","i":"NHS Nottingham and Nottinghamshire Integrated Care Board","a":[16733,17380,17677,18382,16636,17182],"w":[11727,11148,11227,13080,11901,12779],"a1":[11236,11630,11647,12125,11204,11265],"w1":[6842,6164,6215,7511,6903,7732],"x12":[280,225,391,217,236,179],"ea":[3766,3828,4048,4168,3880,4148]},{"c":"RK9","n":"University Hospitals Plymouth NHS Trust","t1":true,"r":"South West","i":"NHS Devon Integrated Care Board","a":[16454,17516,17631,19002,17372,17453],"w":[11076,11721,11731,12699,11260,11450],"a1":[8684,8950,8899,9411,8842,9089],"w1":[3424,3231,3113,3491,2971,3293],"x12":[304,396,322,343,341,588],"ea":[4812,4943,4788,4372,3335,2986]},{"c":"RKB","n":"University Hospitals Coventry and Warwickshire NHS Trust","t1":true,"r":"Midlands","i":"NHS Coventry and Warwickshire Integrated Care Board","a":[21223,22326,21819,22036,20617,21806],"w":[16063,16671,16410,16683,15319,16429],"a1":[12679,13511,13134,13254,12771,13154],"w1":[7661,8069,7918,8167,7611,7987],"x12":[9,8,18,22,12,18],"ea":[1334,1226,1293,1630,1643,1850]},{"c":"RKE","n":"Whittington Health NHS Trust","t1":true,"r":"London","i":"NHS West and North London Integrated Care Board","a":[9009,9685,9439,9719,9000,9715],"w":[6701,7054,6601,6882,6444,7009],"a1":[9009,9685,9439,9719,9000,9715],"w1":[6701,7054,6601,6882,6444,7009],"x12":[213,196,276,282,170,278],"ea":[1382,1394,1372,1287,1300,1362]},{"c":"RL1","n":"The Robert Jones and Agnes Hunt Orthopaedic Hospital NHS Foundation Trust","t1":false,"r":"Midlands","i":"NHS Shropshire, Telford and Wrekin Integrated Care Board","a":[0,0,0,0,0,0],"w":[0,0,0,0,0,0],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[40,39,43,35,41,40]},{"c":"RL4","n":"The Royal Wolverhampton NHS Trust","t1":true,"r":"Midlands","i":"NHS Black Country Integrated Care Board","a":[20341,21260,21191,21288,19960,20921],"w":[16468,17017,17051,16988,15881,16734],"a1":[10936,11575,11508,12023,11154,11706],"w1":[7143,7556,7559,7799,7170,7762],"x12":[498,664,744,811,600,506],"ea":[7280,7086,6918,8473,7014,7412]},{"c":"RLQ","n":"Wye Valley NHS Trust","t1":true,"r":"Midlands","i":"NHS Herefordshire and Worcestershire Integrated Care Board","a":[7176,7367,7700,7511,7460,7560],"w":[4750,4646,4818,4902,4764,4935],"a1":[6113,6375,6595,6349,6338,6436],"w1":[3687,3654,3713,3740,3642,3811],"x12":[161,174,178,126,121,135],"ea":[1542,1588,1552,1543,1569,1601]},{"c":"RLT","n":"George Eliot Hospital NHS Trust","t1":true,"r":"Midlands","i":"NHS Coventry and Warwickshire Integrated Care Board","a":[8719,9357,9287,9248,9015,9432],"w":[7808,8334,8286,8454,7907,8180],"a1":[7143,7575,7434,7469,7241,7779],"w1":[6232,6553,6433,6675,6135,6527],"x12":[170,103,259,100,330,354],"ea":[1173,1254,1194,1222,1169,1107]},{"c":"RM1","n":"Norfolk and Norwich University Hospitals NHS Foundation Trust","t1":true,"r":"East of England","i":"NHS Norfolk and Suffolk Integrated Care Board","a":[20941,21885,21477,22269,21959,21729],"w":[17553,17829,16870,18314,18029,17346],"a1":[13090,13719,13789,14121,13608,13687],"w1":[9703,9665,9200,10182,9683,9311],"x12":[142,270,319,186,138,287],"ea":[3879,4009,3892,4021,3913,3893]},{"c":"RM3","n":"Northern Care Alliance NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Greater Manchester Integrated Care Board","a":[35141,36775,37080,37198,34485,36218],"w":[25700,27044,26332,26433,24715,25364],"a1":[26143,27206,27750,28053,25667,27197],"w1":[16938,17818,17399,17685,16165,16734],"x12":[1242,1251,1231,902,794,1103],"ea":[10072,10403,10640,10956,10242,10966]},{"c":"RMC","n":"Bolton NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Greater Manchester Integrated Care Board","a":[11904,12728,12557,12384,11841,12599],"w":[8618,8749,8355,8937,7916,7980],"a1":[8158,8757,8817,8591,7981,8873],"w1":[4992,4947,4811,5282,4302,4554],"x12":[476,516,455,445,470,580],"ea":[3377,3546,3362,3171,2954,3289]},{"c":"RMP","n":"Tameside and Glossop Integrated Care NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Greater Manchester Integrated Care Board","a":[11492,11845,11806,11746,10881,11967],"w":[7576,7388,7415,7495,6980,7181],"a1":[8811,9388,9493,9445,8845,9548],"w1":[4913,4982,5154,5216,4947,4801],"x12":[724,580,447,474,358,681],"ea":[1853,1931,1814,1864,1813,1785]},{"c":"RN3","n":"Great Western Hospitals NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Bath and North East Somerset, Swindon and Wiltshire Integrated Care Board","a":[11900,12227,12361,12246,11672,12593],"w":[8059,8095,8061,7928,7446,8257],"a1":[7088,7828,7808,7759,7255,7991],"w1":[3871,4265,4229,4143,3591,4283],"x12":[273,443,422,390,281,440],"ea":[3711,3890,3991,3999,3781,3998]},{"c":"RN5","n":"Hampshire Hospitals NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Hampshire and Isle of Wight Integrated Care Board","a":[14944,15036,14974,15498,14477,15005],"w":[9610,9334,9529,9978,8968,9379],"a1":[9888,10007,10028,10368,9903,10050],"w1":[4911,4607,5006,4848,4743,4847],"x12":[11,33,15,7,18,11],"ea":[4613,4585,4697,4704,4323,4575]},{"c":"RN7","n":"Dartford and Gravesham NHS Trust","t1":true,"r":"South East","i":"NHS Kent and Medway Integrated Care Board","a":[15465,15668,15503,16167,15369,16496],"w":[12705,12864,12814,13019,12336,13221],"a1":[11594,11706,11659,12051,11462,12375],"w1":[8858,8908,9003,8930,8466,9198],"x12":[404,409,323,143,479,490],"ea":[4024,4122,4205,4208,4053,4129]},{"c":"RNA","n":"The Dudley Group NHS Foundation Trust","t1":true,"r":"Midlands","i":"NHS Black Country Integrated Care Board","a":[14714,15003,14929,15195,14414,15165],"w":[12090,12124,11535,11918,11049,12177],"a1":[10352,10412,10646,10913,10231,10834],"w1":[7780,7655,7355,7649,6920,7938],"x12":[207,327,175,90,90,155],"ea":[6265,5784,5971,6173,5745,6058]},{"c":"RNN","n":"North Cumbria Integrated Care NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS North East and North Cumbria Integrated Care Board","a":[11208,11740,12086,12828,12159,12199],"w":[6919,7648,8100,8301,7683,7613],"a1":[9182,9477,9169,9427,8924,9184],"w1":[4942,5462,5327,5128,4548,4747],"x12":[448,355,246,269,259,229],"ea":[2447,2599,2696,2726,2599,2677]},{"c":"RNQ","n":"Kettering General Hospital NHS Foundation Trust","t1":true,"r":"Midlands","i":"NHS Northamptonshire Integrated Care Board","a":[19498,19904,19611,20170,19215,20004],"w":[15603,15991,15502,16095,15265,15644],"a1":[10777,10941,10952,11234,10565,11028],"w1":[6888,7043,6850,7180,6628,6689],"x12":[644,773,644,712,697,743],"ea":[2062,2168,2198,2187,2144,2191]},{"c":"RNS","n":"Northampton General Hospital NHS Trust","t1":true,"r":"Midlands","i":"NHS Northamptonshire Integrated Care Board","a":[13648,14006,13979,14088,13280,14253],"w":[10249,10279,9955,9950,9084,9885],"a1":[11019,11247,11200,11493,10937,9611],"w1":[7643,7556,7216,7366,6767,5348],"x12":[881,833,900,886,848,821],"ea":[2975,2786,2775,2856,2787,2744]},{"c":"RNU","n":"Oxford Health NHS Foundation Trust","t1":false,"r":"South East","i":"NHS Thames Valley Integrated Care Board","a":[4353,4709,4816,5281,4733,4909],"w":[3973,4260,4109,5053,4625,4664],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RNZ","n":"Salisbury NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Bath and North East Somerset, Swindon and Wiltshire Integrated Care Board","a":[7332,7566,7516,7783,7604,7524],"w":[5217,5523,4985,5186,5120,5003],"a1":[5040,4898,5094,5257,4951,5083],"w1":[2925,2855,2563,2660,2467,2562],"x12":[135,213,219,136,298,235],"ea":[2235,2228,2194,2247,2010,2104]},{"c":"RP5","n":"Doncaster and Bassetlaw Teaching Hospitals NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS South Yorkshire Integrated Care Board","a":[18071,18853,18633,19256,17356,18559],"w":[13459,13407,13285,14118,12952,13603],"a1":[14041,14560,14627,14905,13785,14439],"w1":[9434,9122,9284,9777,9382,9492],"x12":[239,177,246,180,220,376],"ea":[5400,5176,5325,5763,5005,5160]},{"c":"RP6","n":"Moorfields Eye Hospital NHS Foundation Trust","t1":false,"r":"London","i":"NHS West and North London Integrated Care Board","a":[6346,6494,6415,6824,6572,6569],"w":[6149,6233,6104,6574,6428,6085],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[247,246,249,266,228,239]},{"c":"RPA","n":"Medway NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Kent and Medway Integrated Care Board","a":[16264,17148,17202,17625,16023,17283],"w":[12231,13213,12780,13375,11637,13060],"a1":[9498,9956,9800,10469,9547,10582],"w1":[6255,6780,6308,6892,5923,7375],"x12":[805,845,822,804,695,413],"ea":[2156,2203,2200,2350,2103,2281]},{"c":"RPC","n":"Queen Victoria Hospital NHS Foundation Trust","t1":false,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[1372,1440,1478,1566,1394,1433],"w":[1365,1425,1455,1555,1394,1432],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[546,607,601,632,580,545]},{"c":"RQ3","n":"Birmingham Women's and Children's NHS Foundation Trust","t1":true,"r":"Midlands","i":"NHS Birmingham and Solihull Integrated Care Board","a":[5625,6135,5956,5442,4546,5737],"w":[4737,5423,4986,4711,4260,4489],"a1":[4660,5133,4991,4528,3730,4840],"w1":[3772,4421,4021,3797,3444,3592],"x12":[1,0,0,0,1,3],"ea":[739,766,788,807,707,872]},{"c":"RQM","n":"Chelsea and Westminster Hospital NHS Foundation Trust","t1":true,"r":"London","i":"NHS West and North London Integrated Care Board","a":[26890,28580,28466,28422,26609,28769],"w":[21026,22167,21895,22403,21463,22430],"a1":[20269,21488,21375,21668,20296,21929],"w1":[14644,15461,15080,16034,15397,15910],"x12":[34,53,50,74,61,44],"ea":[3159,3373,3243,3338,3244,3282]},{"c":"RQW","n":"The Princess Alexandra Hospital NHS Trust","t1":true,"r":"East of England","i":"NHS Essex Integrated Care Board","a":[11115,11490,11377,11733,10888,11799],"w":[9002,9270,8897,9147,8397,9155],"a1":[8889,9139,9059,9308,8711,9234],"w1":[6776,6919,6579,6722,6220,6590],"x12":[168,239,318,282,267,328],"ea":[2129,2126,2085,2277,2143,2158]},{"c":"RQX","n":"Homerton Healthcare NHS Foundation Trust","t1":true,"r":"London","i":"NHS North East London Integrated Care Board","a":[11100,11679,11549,11507,11151,11472],"w":[8829,9275,9270,9098,9297,9004],"a1":[11100,11679,11549,11507,11151,11472],"w1":[8829,9275,9270,9098,9297,9004],"x12":[32,8,24,23,19,25],"ea":[2032,2019,2108,2176,2122,2162]},{"c":"RR7","n":"Gateshead Health NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS North East and North Cumbria Integrated Care Board","a":[10046,10619,10729,10518,10055,10296],"w":[7738,7893,8334,8427,8035,7952],"a1":[5427,5864,5869,5701,5393,5605],"w1":[3171,3206,3509,3652,3408,3303],"x12":[0,3,5,3,4,11],"ea":[1807,1868,1923,1920,1821,1858]},{"c":"RR8","n":"Leeds Teaching Hospitals NHS Trust","t1":true,"r":"North East and Yorkshire","i":"NHS West Yorkshire Integrated Care Board","a":[29708,31307,30905,30778,28721,31422],"w":[23400,23907,23755,23276,22048,23784],"a1":[18005,19182,19116,19517,19156,19869],"w1":[11785,11927,12113,12148,12543,12276],"x12":[400,430,452,581,342,685],"ea":[4727,4902,4858,4876,4763,4860]},{"c":"RRF","n":"Wrightington, Wigan and Leigh Teaching Hospitals NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Greater Manchester Integrated Care Board","a":[12691,12636,13414,13661,12299,13114],"w":[9710,9544,10011,10299,8742,9052],"a1":[6399,6642,6734,7080,6856,7034],"w1":[3456,3595,3464,3773,3385,3056],"x12":[321,179,139,181,235,238],"ea":[2670,3063,3194,3101,3193,2947]},{"c":"RRK","n":"University Hospitals Birmingham NHS Foundation Trust","t1":true,"r":"Midlands","i":"NHS Birmingham and Solihull Integrated Care Board","a":[45797,50637,48715,48103,45429,47503],"w":[32133,35860,33587,34164,31307,32755],"a1":[34005,36269,35585,35471,33685,34437],"w1":[20603,21715,20633,21772,19683,19748],"x12":[2279,2620,2391,2187,1990,2085],"ea":[17921,17913,18234,18275,17317,18799]},{"c":"RRV","n":"University College London Hospitals NHS Foundation Trust","t1":true,"r":"London","i":"NHS West and North London Integrated Care Board","a":[13708,14155,14073,14726,13573,14600],"w":[10932,11166,10734,11183,10170,10900],"a1":[13708,14155,14073,14726,13573,14600],"w1":[10932,11166,10734,11183,10170,10900],"x12":[56,77,153,184,131,246],"ea":[2128,1916,1929,1902,1775,1746]},{"c":"RTD","n":"The Newcastle upon Tyne Hospitals NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS North East and North Cumbria Integrated Care Board","a":[23117,24767,23774,23640,22526,24847],"w":[18259,18943,18246,18296,17343,18936],"a1":[11707,12691,12086,12057,11810,12694],"w1":[7136,7132,6844,6977,6825,7125],"x12":[7,11,20,3,16,17],"ea":[6700,6929,7006,7016,6519,7079]},{"c":"RTE","n":"Gloucestershire Hospitals NHS Foundation Trust","t1":true,"r":"South West","i":"NHS Gloucestershire Integrated Care Board","a":[13819,14498,14616,15056,14185,14773],"w":[8973,9257,9109,9991,9195,9134],"a1":[13819,14498,14616,15056,14185,14773],"w1":[8973,9257,9109,9991,9195,9134],"x12":[487,539,472,197,333,454],"ea":[5462,5588,5511,5670,5159,5446]},{"c":"RTF","n":"Northumbria Healthcare NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS North East and North Cumbria Integrated Care Board","a":[23850,24931,25347,26068,24811,25374],"w":[21706,22689,23125,23992,22786,23030],"a1":[10348,10691,10864,11136,10637,10939],"w1":[8204,8449,8642,9060,8612,8595],"x12":[0,0,0,0,0,0],"ea":[4807,4980,5273,5230,5038,4980]},{"c":"RTG","n":"University Hospitals of Derby and Burton NHS Foundation Trust","t1":true,"r":"Midlands","i":"NHS Derby and Derbyshire Integrated Care Board","a":[31384,32943,33828,34747,30816,32437],"w":[21579,22856,23393,24066,20723,21904],"a1":[21785,23104,24291,24837,21589,22823],"w1":[11983,13031,13870,14167,11503,12301],"x12":[749,538,493,589,334,794],"ea":[6028,5908,5879,6275,6487,6719]},{"c":"RTH","n":"Oxford University Hospitals NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Thames Valley Integrated Care Board","a":[18758,19924,20156,20049,18197,19993],"w":[15327,15713,15705,15652,14741,15901],"a1":[13916,14801,14836,15001,14059,15665],"w1":[10553,10658,10503,10729,10643,11573],"x12":[3,10,8,7,6,8],"ea":[9594,9703,9792,9712,9153,10018]},{"c":"RTK","n":"Ashford and St Peter's Hospitals NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[10273,10795,10640,10606,9959,10761],"w":[6699,6565,7090,7415,6818,7216],"a1":[7563,7954,7804,7844,7469,8078],"w1":[4046,3805,4376,4742,4355,4690],"x12":[368,432,409,507,276,489],"ea":[2815,3044,2961,2833,2800,2848]},{"c":"RTP","n":"Surrey and Sussex Healthcare NHS Trust","t1":true,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[9588,10252,10249,10600,10271,11041],"w":[5833,6007,5856,6041,5418,5753],"a1":[9588,10252,10249,10600,10271,11041],"w1":[5833,6007,5856,6041,5418,5753],"x12":[573,657,606,428,504,432],"ea":[4679,3853,4088,4180,3935,4332]},{"c":"RTQ","n":"Gloucestershire Health and Care NHS Foundation Trust","t1":false,"r":"South West","i":"NHS Gloucestershire Integrated Care Board","a":[8704,8969,8750,9207,8732,8345],"w":[8519,8781,8404,8874,8335,8020],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[45,34,47,36,42,40]},{"c":"RTR","n":"South Tees Hospitals NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS North East and North Cumbria Integrated Care Board","a":[18846,19510,19691,20256,19135,18947],"w":[14824,15713,15441,16590,15015,14634],"a1":[7320,7446,7724,7798,7645,7575],"w1":[3613,4034,3990,4558,3796,3623],"x12":[31,10,3,3,5,18],"ea":[4856,4918,5251,5314,4825,5005]},{"c":"RTX","n":"University Hospitals of Morecambe Bay NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Lancashire and South Cumbria Integrated Care Board","a":[13720,14785,14432,15067,14370,14033],"w":[9651,10730,10100,10774,10443,10309],"a1":[8830,9436,9350,9652,9209,9076],"w1":[4849,5487,5121,5464,5373,5468],"x12":[615,599,703,712,666,532],"ea":[3887,4176,4150,4226,4089,4245]},{"c":"RV9","n":"Humber Teaching NHS Foundation Trust","t1":false,"r":"North East and Yorkshire","i":"NHS Humber and North Yorkshire Integrated Care Board","a":[1197,1277,1200,1254,1226,1132],"w":[1193,1268,1196,1253,1219,1122],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RVJ","n":"North Bristol NHS Trust","t1":true,"r":"South West","i":"NHS Bristol, North Somerset and South Gloucestershire Integrated Care Board","a":[9301,9890,9801,null,null,null],"w":[6093,6311,5619,null,null,null],"a1":[9301,9890,9801,null,null,null],"w1":[6093,6311,5619,null,null,null],"x12":[183,301,554,null,null,null],"ea":[5514,5256,5439,null,null,null]},{"c":"RVR","n":"Epsom and St Helier University Hospitals NHS Trust","t1":true,"r":"London","i":"NHS South West London Integrated Care Board","a":[13294,13745,13860,13966,13967,14559],"w":[9449,8398,9412,9467,9513,10314],"a1":[10344,10226,10603,10657,10658,11638],"w1":[6994,5804,6695,6770,6813,7829],"x12":[717,818,758,693,647,743],"ea":[2213,2458,2235,2249,2228,2260]},{"c":"RVV","n":"East Kent Hospitals University NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Kent and Medway Integrated Care Board","a":[25316,27200,27432,27347,25966,26960],"w":[19306,20737,20658,20163,18194,19431],"a1":[13335,14083,14049,13584,13068,13689],"w1":[7679,8041,7922,7155,5926,6974],"x12":[1050,981,1059,1074,1106,1079],"ea":[4066,4252,4321,4180,4053,4136]},{"c":"RVW","n":"North Tees and Hartlepool NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS North East and North Cumbria Integrated Care Board","a":[16195,16797,16537,17127,15730,16342],"w":[13936,14332,14051,13944,13029,13239],"a1":[4910,5073,5083,5306,5028,5103],"w1":[2683,2641,2609,2184,2338,2048],"x12":[2,1,5,7,5,25],"ea":[4446,4437,4608,4657,4201,4438]},{"c":"RW1","n":"Hampshire and Isle of Wight Healthcare NHS Foundation Trust","t1":false,"r":"South East","i":"NHS Hampshire and Isle of Wight Integrated Care Board","a":[2917,3081,2994,3145,2950,2855],"w":[2893,3010,2916,3017,2924,2805],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[117,130,122,121,125,112]},{"c":"RW4","n":"Mersey Care NHS Foundation Trust","t1":false,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[13634,14568,13989,14271,12971,14415],"w":[13400,14260,13634,13999,12838,14122],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[30,35,34,45,49,63]},{"c":"RWA","n":"Hull University Teaching Hospitals NHS Trust","t1":true,"r":"North East and Yorkshire","i":"NHS Humber and North Yorkshire Integrated Care Board","a":[14215,14421,14572,14828,14296,14223],"w":[9341,8750,8539,9228,8771,7758],"a1":[9908,10192,10403,10566,10084,10218],"w1":[5355,4863,4874,5266,4898,4333],"x12":[287,459,476,172,270,612],"ea":[5785,5768,5869,6150,5689,5919]},{"c":"RWD","n":"United Lincolnshire Teaching Hospitals NHS Trust","t1":true,"r":"Midlands","i":"NHS Lincolnshire Integrated Care Board","a":[22357,23394,21444,22655,21745,22024],"w":[17842,17793,15809,16153,15603,15146],"a1":[18091,18995,17123,18237,17516,17584],"w1":[13857,13739,11887,12030,11759,11191],"x12":[819,990,1034,1217,945,1347],"ea":[5821,5923,5971,6140,6127,5984]},{"c":"RWE","n":"University Hospitals of Leicester NHS Trust","t1":true,"r":"Midlands","i":"NHS Leicester, Leicestershire and Rutland Integrated Care Board","a":[24865,25774,25659,24653,24386,26350],"w":[16344,16279,16541,15691,15623,16359],"a1":[22769,23718,23347,22400,22359,24152],"w1":[14359,14343,14366,13619,13696,14347],"x12":[993,965,831,860,540,499],"ea":[10474,10537,10302,10288,10010,10612]},{"c":"RWF","n":"Maidstone and Tunbridge Wells NHS Trust","t1":true,"r":"South East","i":"NHS Kent and Medway Integrated Care Board","a":[21217,22064,21896,22742,22310,23409],"w":[16772,17791,17371,17106,17009,17537],"a1":[19205,19921,19815,20671,20165,21697],"w1":[14762,15680,15315,15048,14874,15826],"x12":[261,287,163,324,272,686],"ea":[2688,2826,2968,3089,2870,2905]},{"c":"RWG","n":"West Hertfordshire Teaching Hospitals NHS Trust","t1":true,"r":"East of England","i":"NHS Central East Integrated Care Board","a":[17085,17551,17265,17811,17190,18240],"w":[15061,15234,15193,15687,15400,15909],"a1":[8487,8572,8135,8493,8036,8453],"w1":[6602,6355,6113,6394,6292,6176],"x12":[19,30,24,26,23,15],"ea":[5233,5430,5649,5821,5703,5849]},{"c":"RWH","n":"East and North Hertfordshire Teaching NHS Trust","t1":true,"r":"East of England","i":"NHS Central East Integrated Care Board","a":[17474,18227,17894,18245,17087,18817],"w":[13269,13507,13536,13932,12743,13619],"a1":[8679,9263,9108,9252,8854,9588],"w1":[4552,4646,4824,5057,4582,4512],"x12":[131,158,170,206,81,89],"ea":[2578,2704,2562,2674,2570,2626]},{"c":"RWJ","n":"Stockport NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Greater Manchester Integrated Care Board","a":[10626,11081,11140,11357,10709,11289],"w":[7344,7489,7587,7551,7730,7927],"a1":[8238,8681,8768,9003,8338,8875],"w1":[5004,5140,5255,5326,5434,5574],"x12":[441,180,210,148,115,228],"ea":[3470,3636,3644,3763,3520,3653]},{"c":"RWP","n":"Worcestershire Acute Hospitals NHS Trust","t1":true,"r":"Midlands","i":"NHS Herefordshire and Worcestershire Integrated Care Board","a":[20165,21349,21626,22354,21184,21082],"w":[14027,15341,14809,15471,13874,14019],"a1":[14067,14882,15007,15328,14853,14684],"w1":[7960,8942,8306,8529,7607,7755],"x12":[848,915,689,986,1072,1062],"ea":[4017,4157,4076,4150,4035,4006]},{"c":"RWW","n":"North Cheshire and Mersey NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[13669,13886,13969,13955,13479,14041],"w":[10437,10445,10520,10713,10174,10554],"a1":[7096,7314,7381,7438,7046,7511],"w1":[3904,3965,4060,4242,3804,4125],"x12":[756,770,916,841,882,856],"ea":[1889,1999,2026,1907,1839,1846]},{"c":"RWX","n":"Berkshire Healthcare NHS Foundation Trust","t1":false,"r":"South East","i":"NHS Thames Valley Integrated Care Board","a":[1441,1509,1604,1625,1382,1419],"w":[1422,1486,1583,1597,1365,1400],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[35,37,42,21,45,30]},{"c":"RWY","n":"Calderdale and Huddersfield NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS West Yorkshire Integrated Care Board","a":[15596,16449,16902,17089,15380,16465],"w":[13340,13728,14682,14537,13214,14048],"a1":[15596,16449,16902,17089,15380,16465],"w1":[13340,13728,14682,14537,13214,14048],"x12":[50,28,11,92,70,41],"ea":[3009,3210,3166,3104,2953,3076]},{"c":"RX1","n":"Nottingham University Hospitals NHS Trust","t1":true,"r":"Midlands","i":"NHS Nottingham and Nottinghamshire Integrated Care Board","a":[24214,25692,25243,25648,25206,27799],"w":[16211,17039,16877,17316,16989,18411],"a1":[12555,13270,12935,13359,12682,13656],"w1":[5611,5707,5573,5976,5397,6086],"x12":[819,1142,1067,771,1015,979],"ea":[8717,8683,8857,9105,8718,9104]},{"c":"RXC","n":"East Sussex Healthcare NHS Trust","t1":true,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[15071,15938,15738,16667,15977,16117],"w":[11628,11626,11775,12526,11386,11950],"a1":[11317,11707,11837,12411,12399,12359],"w1":[7908,7464,7931,8334,7862,8240],"x12":[150,183,231,246,288,215],"ea":[2735,3040,3042,3496,3025,3043]},{"c":"RXF","n":"Mid Yorkshire Teaching NHS Trust","t1":true,"r":"North East and Yorkshire","i":"NHS West Yorkshire Integrated Care Board","a":[23616,24261,24627,24758,22756,24129],"w":[17244,17676,17791,17974,16204,16911],"a1":[16752,17134,17751,17607,16298,17233],"w1":[10608,10768,11111,11062,9907,10193],"x12":[356,576,274,255,156,213],"ea":[4380,4361,4427,4396,4193,4330]},{"c":"RXG","n":"South West Yorkshire Partnership Teaching NHS Foundation Trust","t1":false,"r":"North East and Yorkshire","i":"NHS West Yorkshire Integrated Care Board","a":[0,0,0,0,0,0],"w":[0,0,0,0,0,0],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[135,132,143,126,117,126]},{"c":"RXK","n":"Sandwell and West Birmingham Hospitals NHS Trust","t1":true,"r":"Midlands","i":"NHS Black Country Integrated Care Board","a":[20744,21950,21422,21855,20958,21786],"w":[15556,16757,15709,16403,15539,16224],"a1":[11301,12139,11981,12286,11707,12136],"w1":[6473,7167,6711,7099,6606,6916],"x12":[495,269,231,301,273,221],"ea":[2570,2842,2766,2719,2761,2676]},{"c":"RXL","n":"Blackpool Teaching Hospitals NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Lancashire and South Cumbria Integrated Care Board","a":[19695,19932,19038,19540,18769,19272],"w":[15853,15842,14699,15356,14183,14642],"a1":[8948,8966,9174,9286,9053,9133],"w1":[5363,5161,4998,5234,4673,4619],"x12":[343,313,313,412,428,505],"ea":[4274,4135,4332,4366,4126,4235]},{"c":"RXN","n":"Lancashire Teaching Hospitals NHS Foundation Trust","t1":true,"r":"North West","i":"NHS Lancashire and South Cumbria Integrated Care Board","a":[15643,16570,16448,16670,15818,16415],"w":[11151,11674,12044,12317,11478,11975],"a1":[12271,13056,13060,13121,12585,13030],"w1":[7943,8298,8851,9039,8478,8827],"x12":[360,403,336,312,394,425],"ea":[4208,4341,4275,4749,4477,4842]},{"c":"RXP","n":"County Durham and Darlington NHS Foundation Trust","t1":true,"r":"North East and Yorkshire","i":"NHS North East and North Cumbria Integrated Care Board","a":[23700,25158,24262,24343,22918,23358],"w":[18579,19959,18300,18919,17850,18045],"a1":[12517,13106,13012,13244,12333,12901],"w1":[7396,7907,7050,7820,7265,7588],"x12":[14,18,31,39,27,52],"ea":[5061,5299,4414,5308,4727,4910]},{"c":"RXQ","n":"Buckinghamshire Healthcare NHS Trust","t1":true,"r":"South East","i":"NHS Thames Valley Integrated Care Board","a":[12437,14384,14506,14556,13337,14313],"w":[9376,10276,10449,10911,10366,11100],"a1":[8445,9955,10093,9922,9188,9848],"w1":[5430,5918,6167,6407,6281,6755],"x12":[258,137,263,194,134,164],"ea":[5503,5285,5680,6663,5088,5633]},{"c":"RXR","n":"East Lancashire Hospitals NHS Trust","t1":true,"r":"North West","i":"NHS Lancashire and South Cumbria Integrated Care Board","a":[25370,26385,26377,26251,24351,25242],"w":[20181,21079,20574,20800,18844,19088],"a1":[13969,14439,14344,14366,13548,13927],"w1":[9408,9740,9519,9804,8824,8708],"x12":[1084,1112,755,855,863,814],"ea":[5899,5878,6188,6179,5697,6272]},{"c":"RXW","n":"The Shrewsbury and Telford Hospital NHS Trust","t1":true,"r":"Midlands","i":"NHS Shropshire, Telford and Wrekin Integrated Care Board","a":[13805,14076,14387,14495,13729,14335],"w":[7826,7458,7425,7563,7111,7311],"a1":[11354,11572,11834,12003,11181,11747],"w1":[5578,5190,5185,5350,4843,5069],"x12":[1026,949,1171,1300,1399,1373],"ea":[5750,5839,5977,6037,5702,6011]},{"c":"RY4","n":"Hertfordshire Community NHS Trust","t1":false,"r":"East of England","i":"NHS Central East Integrated Care Board","a":[1134,1015,1307,1342,1068,1195],"w":[1076,948,1199,1218,974,1129],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RY5","n":"Lincolnshire Community Health Services NHS Trust","t1":false,"r":"Midlands","i":"NHS Lincolnshire Integrated Care Board","a":[8678,9261,8822,9426,9083,9745],"w":[8561,9158,8667,9232,8748,9507],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RY7","n":"Wirral Community Health and Care NHS Foundation Trust","t1":false,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[3814,4005,4049,4146,4024,3605],"w":[3687,3823,3765,3930,3729,3240],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RY8","n":"Derbyshire Community Health Services NHS Foundation Trust","t1":false,"r":"Midlands","i":"NHS Derby and Derbyshire Integrated Care Board","a":[9106,9244,8811,9244,8718,8152],"w":[8623,8924,8476,8677,8407,7666],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RYF","n":"South Western Ambulance Service NHS Foundation Trust","t1":false,"r":"South West","i":"NHS Devon Integrated Care Board","a":[2080,2222,2210,2330,2035,1826],"w":[2048,2180,2135,2220,1949,1713],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RYG","n":"Coventry and Warwickshire Partnership NHS Trust","t1":false,"r":"Midlands","i":"NHS Coventry and Warwickshire Integrated Care Board","a":[0,0,0,0,0,0],"w":[0,0,0,0,0,0],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[57,38,35,48,49,40]},{"c":"RYJ","n":"Imperial College Healthcare NHS Trust","t1":true,"r":"London","i":"NHS West and North London Integrated Care Board","a":[23236,24635,24790,25253,23999,25063],"w":[18257,19224,19143,19547,18347,18915],"a1":[11638,12311,12478,12485,12210,12877],"w1":[7057,7466,7300,7403,7009,7374],"x12":[0,0,0,0,0,0],"ea":[4527,4834,4813,4880,4835,4777]},{"c":"RYR","n":"University Hospitals Sussex NHS Foundation Trust","t1":true,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[32593,34092,33640,35058,33836,33825],"w":[21509,22045,21601,21892,20142,20504],"a1":[28723,30388,29995,31045,30088,30362],"w1":[17930,18631,18256,18196,16700,17422],"x12":[900,890,922,1090,984,840],"ea":[9909,10194,10298,10328,9748,9927]},{"c":"RYX","n":"Central London Community Healthcare NHS Trust","t1":false,"r":"London","i":"NHS West and North London Integrated Care Board","a":[13063,13901,14043,14706,13413,14327],"w":[12887,13565,13765,14413,13157,13935],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"RYY","n":"Kent Community Health NHS Foundation Trust","t1":false,"r":"South East","i":"NHS Kent and Medway Integrated Care Board","a":[6443,6909,6625,7048,6529,6655],"w":[6433,6890,6582,6978,6491,6560],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"Y02428","n":"Putnoe Walk In Centre","t1":false,"r":"East of England","i":"NHS Central East Integrated Care Board","a":[2645,2744,2242,2164,2352,2335],"w":[2645,2744,2242,2164,2352,2335],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"Y02532","n":"Miriam Minor Emergency","t1":false,"r":"North West","i":"NHS Cheshire and Merseyside Integrated Care Board","a":[1620,1665,1578,1652,1631,1662],"w":[1620,1657,1578,1652,1631,1662],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]},{"c":"Y02676","n":"Brighton Station Health Centre","t1":false,"r":"South East","i":"NHS Surrey and Sussex Integrated Care Board","a":[1960,1895,1762,1981,1994,1969],"w":[1960,1895,1762,1981,1994,1969],"a1":[0,0,0,0,0,0],"w1":[0,0,0,0,0,0],"x12":[0,0,0,0,0,0],"ea":[0,0,0,0,0,0]}],"built":"20 October 2026"};
+
+(function () {
+  "use strict";
+  const MONTHS = DATA.months;
+  const MLABEL = MONTHS.map(m => ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m.slice(5, 7) - 1]);
+  const MLONG = MONTHS.map(m => new Date(m + "T00:00:00").toLocaleString("en-GB", { month: "long", year: "numeric" }));
+  const TARGET = 0.82;
+  const ORGS = DATA.orgs;
+  const NOTES = {
+    RA7: "Merged with North Bristol from Jul",
+    RVJ: "Merged into Bristol NHS FT from Jul",
+    NTV0B: "No ICB in mapping file",
+  };
+  const REGIONS = [...new Set(ORGS.map(o => o.r))].sort();
+
+  const state = { region: "", icb: "", month: MONTHS.length - 1, measure: "all", providers: "t1", sort: "pct", dir: 1, q: "", showAll: false };
+  try {
+    const saved = JSON.parse(localStorage.getItem("ae-dash") || "null");
+    if (saved && typeof saved === "object") Object.assign(state, { measure: saved.measure || "all", providers: saved.providers || "t1" });
+  } catch (e) {}
+  function save() { try { localStorage.setItem("ae-dash", JSON.stringify({ measure: state.measure, providers: state.providers })); } catch (e) {} }
+
+  // ---------- helpers
+  const $ = id => document.getElementById(id);
+  const fmtInt = n => n == null ? "–" : Math.round(n).toLocaleString("en-GB");
+  const fmtPct = (p, dp = 1) => p == null || !isFinite(p) ? "–" : (p * 100).toFixed(dp) + "%";
+  const fmtCompact = n => n >= 1e6 ? (n / 1e6).toFixed(2) + "m" : n >= 1e4 ? (n / 1e3).toFixed(1) + "k" : fmtInt(n);
+  const ratio = (a, b) => b > 0 ? a / b : null;
+  const svgNS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(svgNS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function txt(parent, x, y, s, attrs = {}) { const t = el("text", Object.assign({ x, y }, attrs), parent); t.textContent = s; return t; }
+  function h(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function inScope(o) { return (!state.region || o.r === state.region) && (!state.icb || o.i === state.icb); }
+  function sumSeries(list, key) {
+    return MONTHS.map((_, i) => list.reduce((s, o) => s + (o[key][i] || 0), 0));
+  }
+  function agg(list) {
+    const a = sumSeries(list, "a"), w = sumSeries(list, "w"), a1 = sumSeries(list, "a1"), w1 = sumSeries(list, "w1");
+    return { a, w, a1, w1, x12: sumSeries(list, "x12"), ea: sumSeries(list, "ea"),
+      pAll: a.map((v, i) => ratio(w[i], v)), pT1: a1.map((v, i) => ratio(w1[i], v)) };
+  }
+  function scopeName() {
+    if (state.icb) return state.icb.replace(/^NHS /, "").replace(/ Integrated Care Board$/, " ICB");
+    if (state.region) return state.region;
+    return "England";
+  }
+  function orgPct(o, i, measure) {
+    return measure === "t1" ? ratio(o.w1[i], o.a1[i]) : ratio(o.w[i], o.a[i]);
+  }
+  function status(p) {
+    if (p == null) return null;
+    if (p >= TARGET) return { cls: "good", text: "On target" };
+    if (p >= 0.70) return { cls: "warn", text: "Below target" };
+    return { cls: "crit", text: "Well below" };
+  }
+  function statusIcon(cls) {
+    const s = document.createElementNS(svgNS, "svg");
+    s.setAttribute("width", "12"); s.setAttribute("height", "12"); s.setAttribute("viewBox", "0 0 12 12"); s.setAttribute("aria-hidden", "true");
+    const c = { good: "var(--good)", warn: "var(--warn)", crit: "var(--crit)" }[cls];
+    if (cls === "good") { el("circle", { cx: 6, cy: 6, r: 6, fill: c }, s); el("path", { d: "M3.3 6.2l1.8 1.8 3.6-3.8", stroke: "#fff", "stroke-width": 1.6, fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" }, s); }
+    else if (cls === "warn") { el("path", { d: "M6 0.8L11.4 10.6H0.6Z", fill: c }, s); el("rect", { x: 5.3, y: 4, width: 1.4, height: 3.6, rx: 0.7, fill: "#3a2a00" }, s); el("circle", { cx: 6, cy: 9, r: 0.8, fill: "#3a2a00" }, s); }
+    else { el("rect", { x: 0.5, y: 0.5, width: 11, height: 11, rx: 2.5, fill: c }, s); el("path", { d: "M3.8 3.8l4.4 4.4M8.2 3.8l-4.4 4.4", stroke: "#fff", "stroke-width": 1.6, "stroke-linecap": "round" }, s); }
+    return s;
+  }
+
+  // ---------- filters
+  function fillSelect(sel, opts, value) {
+    sel.replaceChildren();
+    for (const [v, label] of opts) { const o = document.createElement("option"); o.value = v; o.textContent = label; sel.appendChild(o); }
+    sel.value = value;
+  }
+  function renderFilters() {
+    fillSelect($("f-region"), [["", "All England"], ...REGIONS.map(r => [r, r])], state.region);
+    const icbs = [...new Set(ORGS.filter(o => !state.region || o.r === state.region).map(o => o.i))].sort();
+    if (state.icb && !icbs.includes(state.icb)) state.icb = "";
+    fillSelect($("f-icb"), [["", state.region ? "All ICBs in " + state.region : "All ICBs"], ...icbs.map(i => [i, i.replace(/^NHS /, "").replace(/ Integrated Care Board$/, "")])], state.icb);
+    fillSelect($("f-month"), MONTHS.map((m, i) => [String(i), MLONG[i]]), String(state.month));
+    $("m-all").setAttribute("aria-pressed", state.measure === "all");
+    $("m-t1").setAttribute("aria-pressed", state.measure === "t1");
+    $("p-t1").setAttribute("aria-pressed", state.providers === "t1");
+    $("p-all").setAttribute("aria-pressed", state.providers === "all");
+    $("reset").hidden = !state.region && !state.icb;
+  }
+
+  // ---------- thesis + tiles
+  function delta(cur, base, kind) {
+    // kind: "pp" percentage points (up good) | "pct-neutral" | "pct-bad" (up bad)
+    const span = h("span", "delta");
+    if (cur == null || base == null) { span.classList.add("flat"); span.textContent = "–"; return span; }
+    let txtv, dir;
+    if (kind === "pp") { const d = (cur - base) * 100; dir = Math.abs(d) < 0.05 ? 0 : Math.sign(d); txtv = (d > 0 ? "+" : d < 0 ? "−" : "") + Math.abs(d).toFixed(1) + " pts"; }
+    else { const d = base > 0 ? (cur - base) / base * 100 : 0; dir = Math.abs(d) < 0.5 ? 0 : Math.sign(d); txtv = (d > 0 ? "+" : d < 0 ? "−" : "") + Math.abs(d).toFixed(1) + "%"; }
+    const goodDir = kind === "pp" ? 1 : kind === "pct-bad" ? -1 : 0;
+    span.classList.add(dir === 0 || goodDir === 0 ? "flat" : dir === goodDir ? "good" : "bad");
+    span.append((dir > 0 ? "▲ " : dir < 0 ? "▼ " : "") + txtv);
+    if (state.month > 0) { const vs = h("span", "vs", "vs " + MLABEL[0]); span.append(" ", vs); }
+    return span;
+  }
+  function renderTiles(A, list) {
+    const i = state.month, p = state.measure === "t1" ? A.pT1 : A.pAll;
+    const tiles = $("tiles"); tiles.replaceChildren();
+
+    // hero
+    const t1 = h("div", "tile hero");
+    t1.append(h("div", "label", (state.measure === "t1" ? "Major A&E (Type 1) patients" : "Patients") + " seen within 4 hours"));
+    t1.append(h("div", "value", fmtPct(p[i])));
+    if (state.month > 0) t1.append(delta(p[i], p[0], "pp"));
+    const gap = p[i] != null ? (TARGET - p[i]) * 100 : null;
+    t1.append(h("div", "sub", gap == null ? "" : gap > 0 ? gap.toFixed(1) + " points short of the 82% target" : "Meets the 82% target"));
+    const m = h("div", "meter"); m.setAttribute("aria-hidden", "true");
+    const tr = h("div", "track"), fi = h("div", "fill"); fi.style.width = Math.max(0, Math.min(1, p[i] || 0)) * 100 + "%";
+    if (state.measure === "t1") fi.style.background = "var(--s2)";
+    m.append(tr, fi);
+    for (const [v, l] of [[0.82, "82%"], [0.95, "95%"]]) { const tk = h("div", "tick"); tk.style.left = "calc(" + v * 100 + "% - 1px)"; const s = h("span", null, l); tk.append(s); m.append(tk); }
+    t1.append(m); tiles.append(t1);
+
+    // attendances
+    const t2 = h("div", "tile");
+    t2.append(h("div", "label", "A&E attendances"), h("div", "value", fmtInt(A.a[i])));
+    if (state.month > 0) t2.append(delta(A.a[i], A.a[0], "pct-neutral"));
+    t2.append(h("div", "sub", "Type 1: " + fmtInt(A.a1[i]) + " · other: " + fmtInt(A.a[i] - A.a1[i])));
+    tiles.append(t2);
+
+    // 12 hour waits
+    const t3 = h("div", "tile");
+    t3.append(h("div", "label", "Waited 12+ hours for a bed"), h("div", "value", fmtInt(A.x12[i])));
+    if (state.month > 0) t3.append(delta(A.x12[i], A.x12[0], "pct-bad"));
+    const per = A.ea[i] > 0 ? A.x12[i] / A.ea[i] : null;
+    t3.append(h("div", "sub", per == null ? "After the decision to admit" : "After the decision to admit · " + fmtPct(per) + " of emergency admissions"));
+    tiles.append(t3);
+
+    // trusts on target
+    const t1s = list.filter(o => o.t1 && o.a[i]);
+    const on = t1s.filter(o => orgPct(o, i, "all") >= TARGET).length;
+    const t4 = h("div", "tile");
+    t4.append(h("div", "label", "Major A&E trusts meeting 82%"), h("div", "value", t1s.length ? on + " of " + t1s.length : "–"));
+    t4.append(h("div", "sub", t1s.length ? "Judged on all A&E types, " + MLONG[i] : "No major A&E trusts in this area"));
+    tiles.append(t4);
+
+    // thesis
+    const th = $("thesis"); th.replaceChildren();
+    const pA = A.pAll;
+    const b1 = h("b", null, fmtPct(pA[i]));
+    th.append("The standard is 95% of patients seen within four hours, and this year's target is 82%. In " + MLONG[i] + ", " + scopeName() + " managed ", b1);
+    if (state.month > 0 && pA[0] != null) {
+      const d = (pA[i] - pA[0]) * 100;
+      th.append(Math.abs(d) < 0.05 ? ", level with April." : ", " + (d < 0 ? "down " : "up ") + Math.abs(d).toFixed(1) + " points since April.");
+    } else th.append(".");
+  }
+
+  // ---------- trend chart
+  let trendCache = null;
+  function renderTrend(A) {
+    const box = $("trend"), tip = $("trend-tip");
+    box.querySelectorAll("svg").forEach(s => s.remove());
+    const W = Math.max(300, box.clientWidth), H = W < 480 ? 250 : 290;
+    const m = { l: 40, r: W < 480 ? 92 : 112, t: 14, b: 30 };
+    const iw = W - m.l - m.r, ih = H - m.t - m.b;
+    const vals = [...A.pAll, ...A.pT1].filter(v => v != null);
+    let lo = Math.floor((Math.min(...vals, TARGET) * 100 - 4) / 5) * 5, hi = Math.ceil((Math.max(...vals, TARGET) * 100 + 3) / 5) * 5;
+    lo = Math.max(0, lo); hi = Math.min(100, hi);
+    const x = i => m.l + (MONTHS.length === 1 ? iw / 2 : i * iw / (MONTHS.length - 1));
+    const y = v => m.t + ih - ((v * 100 - lo) / (hi - lo)) * ih;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Line chart: share of patients seen within four hours in ${scopeName()}, April to September 2026, all A&E types and major A&E departments, against the 82% target.` });
+    box.insertBefore(svg, tip);
+
+    for (let v = lo; v <= hi; v += 5) {
+      el("line", { x1: m.l, x2: m.l + iw, y1: y(v / 100), y2: y(v / 100), stroke: "var(--grid)", "stroke-width": 1 }, svg);
+      txt(svg, m.l - 8, y(v / 100) + 4, v + "%", { "text-anchor": "end" });
+    }
+    MONTHS.forEach((_, i) => txt(svg, x(i), H - 8, MLABEL[i], { "text-anchor": "middle" }));
+    // selected month band
+    el("rect", { x: x(state.month) - 14, y: m.t, width: 28, height: ih, fill: "var(--accent-wash)", rx: 4 }, svg);
+    // target
+    el("line", { x1: m.l, x2: m.l + iw, y1: y(TARGET), y2: y(TARGET), stroke: "var(--ink-2)", "stroke-width": 2, "stroke-dasharray": "1 4", "stroke-linecap": "round" }, svg);
+    txt(svg, m.l + iw + 10, y(TARGET) + 4, "82% target", { class: "lab" });
+
+    const series = [{ key: "pAll", color: "var(--s1)", name: "All types" }, { key: "pT1", color: "var(--s2)", name: "Type 1" }];
+    // area wash under the all-types line
+    const pts = A.pAll.map((v, i) => v == null ? null : [x(i), y(v)]).filter(Boolean);
+    if (pts.length > 1) el("path", { d: "M" + pts.map(p => p.join(",")).join("L") + `L${pts[pts.length - 1][0]},${m.t + ih}L${pts[0][0]},${m.t + ih}Z`, fill: "var(--s1-wash)" }, svg);
+    const ends = [];
+    for (const s of series) {
+      const P = A[s.key].map((v, i) => v == null ? null : [x(i), y(v)]);
+      const d = P.reduce((acc, p, i) => p ? acc + (acc && P[i - 1] ? "L" : "M") + p.join(",") : acc, "");
+      if (d) el("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+      const li = P.length - 1;
+      if (P[li]) { el("circle", { cx: P[li][0], cy: P[li][1], r: 4.5, fill: s.color, stroke: "var(--surface)", "stroke-width": 2 }, svg); ends.push({ y: P[li][1], s, v: A[s.key][li] }); }
+    }
+    // end labels with simple collision avoidance against each other and the target label
+    ends.sort((a, b) => a.y - b.y);
+    const taken = [y(TARGET)];
+    ends.forEach(e => {
+      let ly = e.y;
+      for (const t of taken) if (Math.abs(ly - t) < 16) ly = t + (ly >= t ? 16 : -16);
+      taken.push(ly);
+      txt(svg, m.l + iw + 10, ly + 4, fmtPct(e.v) + " " + e.s.name, { class: "lab-strong" });
+    });
+    // hover layer
+    const cross = el("line", { y1: m.t, y2: m.t + ih, stroke: "var(--axis)", "stroke-width": 1, opacity: 0 }, svg);
+    const dots = series.map(s => el("circle", { r: 4.5, fill: s.color, stroke: "var(--surface)", "stroke-width": 2, opacity: 0 }, svg));
+    const hit = el("rect", { x: m.l - 10, y: m.t, width: iw + 20, height: ih, fill: "transparent", tabindex: 0, "aria-label": "Monthly values; use left and right arrow keys" }, svg);
+    let cur = -1;
+    function show(i) {
+      cur = i;
+      cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("opacity", 1);
+      series.forEach((s, k) => { const v = A[s.key][i]; if (v == null) { dots[k].setAttribute("opacity", 0); return; } dots[k].setAttribute("cx", x(i)); dots[k].setAttribute("cy", y(v)); dots[k].setAttribute("opacity", 1); });
+      tip.replaceChildren();
+      tip.append(h("div", "t-h", MLONG[i]));
+      series.forEach(s => { const r = h("div", "t-r"); const k = h("i", "key-line"); k.style.background = s.color; r.append(k, h("b", null, fmtPct(A[s.key][i])), h("span", null, s.key === "pAll" ? "all A&E types" : "major A&E (Type 1)")); tip.append(r); });
+      tip.append(h("div", "t-m", fmtInt(A.a[i]) + " attendances · " + fmtInt(A.x12[i]) + " waited 12+ hrs for a bed"));
+      const scale = box.clientWidth / W;
+      const left = x(i) * scale, tw = tip.offsetWidth || 200;
+      tip.style.left = Math.max(0, Math.min(box.clientWidth - tw, left + (left > box.clientWidth / 2 ? -tw - 12 : 12))) + "px";
+      tip.style.top = (m.t * scale) + "px";
+      tip.classList.add("on");
+    }
+    function hide() { cur = -1; cross.setAttribute("opacity", 0); dots.forEach(d => d.setAttribute("opacity", 0)); tip.classList.remove("on"); }
+    hit.addEventListener("pointermove", ev => {
+      const r = svg.getBoundingClientRect(); const px = (ev.clientX - r.left) * (W / r.width);
+      let best = 0, bd = Infinity; MONTHS.forEach((_, i) => { const d = Math.abs(x(i) - px); if (d < bd) { bd = d; best = i; } });
+      show(best);
+    });
+    hit.addEventListener("pointerleave", hide);
+    hit.addEventListener("focus", () => show(state.month));
+    hit.addEventListener("blur", hide);
+    hit.addEventListener("keydown", ev => {
+      if (ev.key === "ArrowRight") { show(Math.min(MONTHS.length - 1, (cur < 0 ? state.month : cur) + 1)); ev.preventDefault(); }
+      if (ev.key === "ArrowLeft") { show(Math.max(0, (cur < 0 ? state.month : cur) - 1)); ev.preventDefault(); }
+    });
+
+    $("trend-scope").textContent = scopeName() + ", April to September 2026";
+    // figures table
+    const t = document.createElement("table");
+    const hr = document.createElement("tr");
+    ["Month", "Attendances", "Within 4 hrs (all)", "Within 4 hrs (Type 1)", "12+ hr waits"].forEach(c => hr.append(h("th", null, c)));
+    const thead = document.createElement("thead"); thead.append(hr); t.append(thead);
+    const tb = document.createElement("tbody");
+    MONTHS.forEach((_, i) => { const r = document.createElement("tr"); [MLONG[i], fmtInt(A.a[i]), fmtPct(A.pAll[i]), fmtPct(A.pT1[i]), fmtInt(A.x12[i])].forEach(c => r.append(h("td", null, c))); tb.append(r); });
+    t.append(tb); $("trend-table").replaceChildren(t);
+  }
+
+  // ---------- region bars
+  function renderBars() {
+    const box = $("bars"), tip = $("bars-tip");
+    box.querySelectorAll("svg").forEach(s => s.remove());
+    const i = state.month, key = state.measure === "t1" ? "pT1" : "pAll";
+    const rows = REGIONS.map(r => { const A = agg(ORGS.filter(o => o.r === r)); return { r, p: A[key][i], a: A.a[i], a1: A.a1[i], x12: A.x12[i], first: A[key][0] }; })
+      .sort((a, b) => (b.p ?? -1) - (a.p ?? -1));
+    const W = Math.max(300, box.clientWidth), rowH = 34, labW = W < 420 ? 118 : 170;
+    const m = { l: labW, r: 64, t: 6, b: 26 };
+    const iw = W - m.l - m.r, H = m.t + rows.length * rowH + m.b;
+    const x = v => m.l + v * iw;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": `Bar chart of the share of patients seen within four hours by NHS region, ${MLONG[i]}.` });
+    box.insertBefore(svg, tip);
+    for (const v of [0, 0.25, 0.5, 0.75, 1]) {
+      el("line", { x1: x(v), x2: x(v), y1: m.t, y2: m.t + rows.length * rowH, stroke: "var(--grid)", "stroke-width": 1 }, svg);
+      txt(svg, x(v), H - 8, Math.round(v * 100) + "%", { "text-anchor": v === 0 ? "start" : v === 1 ? "end" : "middle" });
+    }
+    rows.forEach((row, k) => {
+      const cy = m.t + k * rowH + rowH / 2, bh = 18, sel = row.r === state.region, dim = state.region && !sel;
+      const g = el("g", { class: "bar-hit", tabindex: 0, role: "button", "aria-pressed": sel ? "true" : "false", "aria-label": `${row.r}: ${fmtPct(row.p)}. Select to filter.` }, svg);
+      el("rect", { x: 0, y: cy - rowH / 2, width: W, height: rowH, fill: sel ? "var(--accent-wash)" : "transparent", rx: 6 }, g);
+      const lab = txt(g, labW - 10, cy + 4, row.r.replace("North East and Yorkshire", W < 420 ? "NE & Yorkshire" : "North East & Yorks"), { class: sel ? "lab-strong" : "lab", "text-anchor": "end" });
+      const w = Math.max(0, (row.p || 0) * iw), r = Math.min(4, w / 2);
+      el("path", { class: "bar", d: `M${x(0)},${cy - bh / 2}H${x(0) + w - r}a${r},${r} 0 0 1 ${r},${r}V${cy + bh / 2 - r}a${r},${r} 0 0 1 ${-r},${r}H${x(0)}Z`, fill: state.measure === "t1" ? "var(--s2)" : "var(--s1)", opacity: dim ? 0.35 : 1 }, g);
+      txt(g, W - 2, cy + 4, fmtPct(row.p), { class: "lab", "text-anchor": "end" });
+      function showTip() {
+        tip.replaceChildren(); tip.append(h("div", "t-h", row.r + " · " + MLONG[i]));
+        const r1 = h("div", "t-r"); const k1 = h("i", "key-line"); k1.style.background = state.measure === "t1" ? "var(--s2)" : "var(--s1)";
+        r1.append(k1, h("b", null, fmtPct(row.p)), h("span", null, "within 4 hours")); tip.append(r1);
+        if (state.month > 0 && row.first != null) { const d = (row.p - row.first) * 100; tip.append(h("div", "t-m", (d >= 0 ? "+" : "−") + Math.abs(d).toFixed(1) + " pts since April")); }
+        tip.append(h("div", "t-m", fmtInt(row.a) + " attendances · " + fmtInt(row.x12) + " waited 12+ hrs"));
+        const scale = box.clientWidth / W; const tw = tip.offsetWidth || 200;
+        tip.style.left = Math.max(0, Math.min(box.clientWidth - tw, (x(0) + w) * scale - tw / 2)) + "px";
+        tip.style.top = Math.max(0, (cy + rowH / 2 + 4) * scale) + "px";
+        tip.classList.add("on");
+      }
+      g.addEventListener("pointerenter", showTip); g.addEventListener("focus", showTip);
+      g.addEventListener("pointerleave", () => tip.classList.remove("on")); g.addEventListener("blur", () => tip.classList.remove("on"));
+      const act = () => { state.region = sel ? "" : row.r; state.icb = ""; state.showAll = false; renderAll(); };
+      g.addEventListener("click", act);
+      g.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); act(); } });
+    });
+    // target line over bars
+    el("line", { x1: x(TARGET), x2: x(TARGET), y1: m.t - 2, y2: m.t + rows.length * rowH, stroke: "var(--ink-2)", "stroke-width": 2, "stroke-dasharray": "1 4", "stroke-linecap": "round", "pointer-events": "none" }, svg);
+    $("bars-note").textContent = (state.measure === "t1" ? "Major A&E (Type 1) only" : "All A&E types") + ", " + MLONG[i] + ". Dotted line: 82% target.";
+  }
+
+  // ---------- table
+  const COLS = [
+    { id: "name", label: "Provider", sort: o => o.n },
+    { id: "att", label: "Attendances", sort: o => o._a },
+    { id: "pct", label: "Within 4 hrs", sort: o => o._p },
+    { id: "chg", label: "Change since Apr", sort: o => o._d },
+    { id: "x12", label: "12+ hr waits", sort: o => o._x },
+    { id: "trend", label: "Apr–Sep", sort: null },
+    { id: "status", label: "Against 82%", sort: o => o._s },
+  ];
+  function renderHead() {
+    const tr = $("thead"); tr.replaceChildren();
+    COLS.forEach(c => {
+      const th = document.createElement("th");
+      if (c.sort) {
+        const b = document.createElement("button"); b.type = "button";
+        b.append(c.label); const arr = h("span", "arr", state.sort === c.id ? (state.dir > 0 ? "▲" : "▼") : ""); b.append(arr);
+        th.setAttribute("aria-sort", state.sort === c.id ? (state.dir > 0 ? "ascending" : "descending") : "none");
+        b.addEventListener("click", () => { if (state.sort === c.id) state.dir *= -1; else { state.sort = c.id; state.dir = c.id === "name" || c.id === "pct" ? 1 : -1; } renderTable(); });
+        th.append(b);
+      } else th.textContent = c.label;
+      tr.append(th);
+    });
+  }
+  function spark(o, key) {
+    const W = 84, H = 26, lo = 0.4, hi = 1;
+    const s = document.createElementNS(svgNS, "svg"); s.setAttribute("width", W); s.setAttribute("height", H); s.setAttribute("viewBox", `0 0 ${W} ${H}`); s.setAttribute("aria-hidden", "true");
+    const x = i => 3 + i * (W - 6) / (MONTHS.length - 1), y = v => 3 + (H - 6) * (1 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo));
+    el("line", { x1: 0, x2: W, y1: y(TARGET), y2: y(TARGET), stroke: "var(--axis)", "stroke-width": 1, "stroke-dasharray": "2 2" }, s);
+    const P = MONTHS.map((_, i) => { const v = orgPct(o, i, key); return v == null ? null : [x(i), y(v)]; });
+    const d = P.reduce((acc, p, i) => p ? acc + (acc && P[i - 1] ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1) : acc, "");
+    if (d) el("path", { d, fill: "none", stroke: key === "t1" ? "var(--s2)" : "var(--s1)", "stroke-width": 1.75, "stroke-linejoin": "round", "stroke-linecap": "round" }, s);
+    const p = P[state.month]; if (p) el("circle", { cx: p[0], cy: p[1], r: 3, fill: key === "t1" ? "var(--s2)" : "var(--s1)", stroke: "var(--surface)", "stroke-width": 1.5 }, s);
+    return s;
+  }
+  function renderTable() {
+    renderHead();
+    const i = state.month, key = state.measure;
+    const q = state.q.trim().toLowerCase();
+    let rows = ORGS.filter(inScope)
+      .filter(o => state.providers === "all" || o.t1)
+      .filter(o => o.a[i] != null && (key === "all" ? o.a[i] > 0 : o.a1[i] > 0))
+      .filter(o => !q || o.n.toLowerCase().includes(q) || o.c.toLowerCase() === q);
+    rows.forEach(o => {
+      o._a = key === "t1" ? o.a1[i] : o.a[i];
+      o._p = orgPct(o, i, key);
+      const p0 = orgPct(o, 0, key);
+      o._d = state.month > 0 && p0 != null && o._p != null ? o._p - p0 : null;
+      o._x = o.x12[i];
+      const st = status(orgPct(o, i, "all")); o._s = orgPct(o, i, "all"); o._st = st;
+    });
+    const col = COLS.find(c => c.id === state.sort) || COLS[2];
+    rows.sort((a, b) => {
+      const va = col.sort(a), vb = col.sort(b);
+      if (va == null && vb == null) return 0; if (va == null) return 1; if (vb == null) return -1;
+      return (typeof va === "string" ? va.localeCompare(vb) : va - vb) * state.dir;
+    });
+    const total = rows.length, LIMIT = 15;
+    const shown = state.showAll ? rows : rows.slice(0, LIMIT);
+    const tb = $("tbody"); tb.replaceChildren();
+    if (!shown.length) { const tr = document.createElement("tr"); const td = h("td", "empty", q ? "No providers match “" + state.q + "”." : "No providers report this measure here."); td.colSpan = COLS.length; tr.append(td); tb.append(tr); }
+    shown.forEach(o => {
+      const tr = document.createElement("tr");
+      const tdN = document.createElement("td");
+      const nm = h("div", "tname", o.n); if (NOTES[o.c]) nm.append(h("span", "flag", NOTES[o.c]));
+      tdN.append(nm, h("div", "tsub", state.icb ? o.r : o.i.replace(/^NHS /, "").replace(/ Integrated Care Board$/, " ICB")));
+      const tdA = h("td", null, fmtInt(o._a));
+      const tdP = document.createElement("td"); const pc = h("span", "pct-cell");
+      const bar = h("span", "pbar" + (key === "t1" ? " t1" : "")); const fill = document.createElement("i"); fill.style.width = (o._p || 0) * 100 + "%"; bar.append(fill);
+      pc.append(h("span", null, fmtPct(o._p)), bar); tdP.append(pc);
+      const tdD = document.createElement("td");
+      if (o._d == null) tdD.textContent = "–"; else { const d = o._d * 100; tdD.textContent = (d > 0.05 ? "+" : d < -0.05 ? "−" : "") + Math.abs(d).toFixed(1) + " pts"; tdD.style.color = d > 0.05 ? "var(--good-ink)" : d < -0.05 ? "var(--crit-ink)" : "var(--ink-2)"; }
+      const tdX = h("td", null, o.t1 || o._x ? fmtInt(o._x) : "–");
+      const tdS = document.createElement("td"); tdS.append(spark(o, key));
+      const tdC = document.createElement("td");
+      if (o._st) { const c = h("span", "chip " + o._st.cls); c.append(statusIcon(o._st.cls), o._st.text); tdC.append(c); } else tdC.textContent = "–";
+      tr.append(tdN, tdA, tdP, tdD, tdX, tdS, tdC); tb.append(tr);
+    });
+    const more = $("more");
+    more.hidden = total <= LIMIT;
+    more.textContent = state.showAll ? "Show fewer" : "Show all " + total;
+    $("count").textContent = total ? "Showing " + shown.length + " of " + total : "";
+    $("tbl-note").textContent = scopeName() + ", " + MLONG[i] + ". " + (key === "t1" ? "Figures for major (Type 1) departments only. " : "") + "Select a column heading to sort.";
+  }
+
+  // ---------- orchestration
+  function renderAll() {
+    renderFilters();
+    const list = ORGS.filter(inScope);
+    const A = agg(list);
+    renderTiles(A, list);
+    renderTrend(A);
+    renderBars();
+    renderTable();
+  }
+  $("f-region").addEventListener("change", e => { state.region = e.target.value; state.icb = ""; state.showAll = false; renderAll(); });
+  $("f-icb").addEventListener("change", e => {
+    state.icb = e.target.value;
+    if (state.icb && !state.region) { const o = ORGS.find(o => o.i === state.icb); if (o) state.region = o.r; }
+    state.showAll = false; renderAll();
+  });
+  $("f-month").addEventListener("change", e => { state.month = +e.target.value; renderAll(); });
+  $("m-all").addEventListener("click", () => { state.measure = "all"; save(); renderAll(); });
+  $("m-t1").addEventListener("click", () => { state.measure = "t1"; save(); renderAll(); });
+  $("p-t1").addEventListener("click", () => { state.providers = "t1"; state.showAll = false; save(); renderAll(); });
+  $("p-all").addEventListener("click", () => { state.providers = "all"; state.showAll = false; save(); renderAll(); });
+  $("reset").addEventListener("click", () => { state.region = ""; state.icb = ""; state.showAll = false; renderAll(); });
+  $("search").addEventListener("input", e => { state.q = e.target.value; state.showAll = false; renderTable(); });
+  $("more").addEventListener("click", () => { state.showAll = !state.showAll; renderTable(); });
+  $("built").textContent = "Data processed " + DATA.built + ".";
+  let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { const list = ORGS.filter(inScope); renderTrend(agg(list)); renderBars(); }, 120); });
+  renderAll();
+})();
+</script>
+
+</body>
+</html>
